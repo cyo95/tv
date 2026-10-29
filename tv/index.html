@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es" data-theme="medianoche" data-size="grande">
+<head>
+  <meta charset="utf-8">
+  <script>
+    // La app usa rutas relativas. Si se abre como /tv (sin barra final),
+    // los recursos se buscarían en la raíz del dominio: se corrige aquí.
+    (function () {
+      var p = location.pathname;
+      if (!/\/$/.test(p) && !/\.html?$/.test(p)) {
+        location.replace(p + '/' + location.search + location.hash);
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#080c14">
+  <meta name="robots" content="noindex">
+  <meta name="cyotools-tv" content="launcher">
+  <title>CyoTools TV</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='12' width='56' height='36' rx='7' fill='%23f3f5f9'/%3E%3Crect x='22' y='52' width='20' height='4' rx='2' fill='%23f3f5f9'/%3E%3C/svg%3E">
+  <link rel="preload" href="assets/fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <script type="module" src="assets/js/app.js"></script>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <button class="brand" type="button" data-nav data-action="home" aria-label="CyoTools TV, ir al inicio">
+      <span class="brand-word">CyoTools</span><span class="brand-tv">TV</span>
+    </button>
+    <div class="topbar-end">
+      <div class="clock" id="clock" aria-live="off">
+        <time class="clock-time" id="clock-time"></time>
+        <span class="clock-date" id="clock-date"></span>
+      </div>
+      <button class="pill" type="button" data-nav data-action="help">Cómo volver</button>
+      <button class="pill" type="button" data-nav data-action="settings">Ajustes</button>
+    </div>
+  </header>
+
+  <main id="view" class="view" tabindex="-1"></main>
+
+  <footer class="hint" id="hint"></footer>
+
+  <div class="launch" id="launch" hidden>
+    <div class="launch-inner">
+      <p class="launch-label">Abriendo</p>
+      <p class="launch-name" id="launch-name"></p>
+      <div class="launch-bar" aria-hidden="true"><span></span></div>
+      <p class="launch-hint" id="launch-hint"></p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <noscript>
+    <div class="noscript">CyoTools TV necesita JavaScript activado en Chrome.</div>
+  </noscript>
+</body>
+</html>

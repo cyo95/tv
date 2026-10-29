@@ -1,0 +1,1 @@
+Coloca aquí logotipos oficiales (SVG o PNG grande) y enlázalos desde assets/js/services.js.

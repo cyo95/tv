@@ -1,9 +1,13 @@
 import { SERVICES, SERVICE_BY_ID, isValidServiceUrl } from './services.js';
 import {
-  THEMES, CARD_SIZES, loadSettings, saveSettings, clearSettings,
-  defaultSettings, isStorageAvailable, visibleServiceIds,
+  THEMES, CARD_SIZES, SAVER_DELAYS, loadSettings, saveSettings, clearSettings,
+  defaultSettings, isStorageAvailable, mainServiceIds, extraServiceIds, placementOf,
 } from './storage.js';
 import { findNext, isArrowKey } from './spatial-nav.js';
+import {
+  startNews, getNews, onNews, showable, timeAgo, visualHTML, wireVisuals,
+} from './news.js';
+import { initScreensaver } from './screensaver.js';
 
 /* ------------------------------------------------------------------ *
  * Estado
@@ -13,12 +17,13 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const view = $('#view');
 const root = document.documentElement;
 
-const ROUTES = ['home', 'apps', 'settings', 'settings/apps', 'help'];
+const ROUTES = ['home', 'apps', 'settings', 'settings/apps', 'help', 'news'];
 let settings = loadSettings();
 let route = parseRoute(location.hash);
 let launching = false;
 const lastFocusByRoute = new Map(); // ruta -> valor de data-focus-key
 const LAST_OPENED_KEY = 'cyotools-tv:last-opened';
+const LAST_QUERY_KEY = 'cyotools-tv:last-query';
 
 // La extensión opcional «CyoTools TV – Inicio» marca el documento al cargar.
 const hasExtension = () => root.dataset.cyoExtension === 'on';
@@ -45,6 +50,8 @@ const ICON = {
   starLine: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.24l-5.66 2.97 1.08-6.3L2.85 9.45l6.32-.92z"/></svg>',
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 15l7-7 7 7"/></svg>',
   down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 9l7 7 7-7"/></svg>',
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg>',
+  grid: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.8"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.8"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.8"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   eyeOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a10.4 10.4 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>',
 };
@@ -158,7 +165,10 @@ function cardHTML(s) {
     </button>`;
 }
 
-function allAppsCardHTML(total) {
+function allAppsCardHTML(mainMore, extrasCount) {
+  const parts = [];
+  if (mainMore) parts.push(`${mainMore} ${mainMore === 1 ? 'app más' : 'apps más'}`);
+  if (extrasCount) parts.push(`${extrasCount} ${extrasCount === 1 ? 'extra' : 'extras'}`);
   return `
     <button class="card card--all" type="button" data-nav data-action="apps" data-focus-key="all-apps"
       aria-label="Ver todas las apps">
@@ -167,7 +177,7 @@ function allAppsCardHTML(total) {
       </span>
       <span class="card-caption">
         <span class="card-title">Todas las apps</span>
-        <span class="card-tag">${total} disponibles</span>
+        <span class="card-tag">${parts.join(' y ')}</span>
       </span>
     </button>`;
 }
@@ -194,26 +204,38 @@ function backHTML(label = 'Volver') {
   return `<button class="back" type="button" data-nav data-action="back" data-focus-key="back">${ICON.back}<span>${label}</span></button>`;
 }
 
+const mainIds = () => mainServiceIds(settings).filter((id) => SAFE_IDS.has(id));
+const extraIds = () => extraServiceIds(settings).filter((id) => SAFE_IDS.has(id));
+
+// Inicio muestra las apps principales. Si no caben, o si hay Extras, la
+// última tarjeta lleva a «Todas las apps».
 function renderHome() {
-  const ids = visibleServiceIds(settings).filter((id) => SAFE_IDS.has(id));
+  const ids = mainIds();
+  const extras = extraIds();
   view.className = 'view view--center';
-  if (!ids.length) return emptyHTML();
+  if (!ids.length && !extras.length) return emptyHTML();
   const slots = slotsOnHome();
-  let shown = ids;
-  let extra = '';
-  if (ids.length > slots) {
-    shown = ids.slice(0, slots - 1);
-    extra = allAppsCardHTML(ids.length);
-  }
-  return `<div class="grid" data-grid>${shown.map((id) => cardHTML(SERVICE_BY_ID[id])).join('')}${extra}</div>`;
+  const needTile = ids.length > slots || extras.length > 0;
+  const shown = needTile ? ids.slice(0, slots - 1) : ids;
+  const tile = needTile ? allAppsCardHTML(ids.length - shown.length, extras.length) : '';
+  return `<div class="grid" data-grid>${shown.map((id) => cardHTML(SERVICE_BY_ID[id])).join('')}${tile}</div>`;
 }
 
 function renderApps() {
-  const ids = visibleServiceIds(settings).filter((id) => SAFE_IDS.has(id));
+  const ids = mainIds();
+  const extras = extraIds();
   view.className = 'view';
+  const grid = (list) => `<div class="grid" data-grid>${list.map((id) => cardHTML(SERVICE_BY_ID[id])).join('')}</div>`;
+  if (!ids.length && !extras.length) {
+    return `<div class="screen-head">${backHTML()}<h1 class="screen-title">Todas las apps</h1></div>${emptyHTML()}`;
+  }
   return `
     <div class="screen-head">${backHTML()}<h1 class="screen-title">Todas las apps</h1></div>
-    ${ids.length ? `<div class="grid" data-grid>${ids.map((id) => cardHTML(SERVICE_BY_ID[id])).join('')}</div>` : emptyHTML()}`;
+    ${ids.length ? grid(ids) : ''}
+    ${extras.length ? `
+      <h2 class="section-title">Extras</h2>
+      <p class="section-note">Apps que no aparecen en Inicio. Puedes moverlas desde Ajustes.</p>
+      ${grid(extras)}` : ''}`;
 }
 
 function switchRow(key, label, hint = '') {
@@ -244,7 +266,9 @@ function renderSettings() {
   view.className = 'view';
   const storageNote = isStorageAvailable() ? '' : `
     <p class="note">Este navegador no permite guardar datos. Los cambios funcionarán hasta que se recargue la página. Comprueba que Chrome no se abre en modo incógnito ni como invitado.</p>`;
-  const hiddenCount = settings.hidden.length;
+  const counts = [];
+  if (settings.extras.length) counts.push(`En Extras: ${settings.extras.length}`);
+  if (settings.hidden.length) counts.push(`Ocultas: ${settings.hidden.length}`);
   return `
     <div class="screen-head">${backHTML()}<h1 class="screen-title">Ajustes</h1></div>
     <div class="settings">
@@ -253,8 +277,8 @@ function renderSettings() {
         <h2>Apps</h2>
         <div class="rows">
           <button class="row" type="button" data-nav data-action="settings-apps" data-focus-key="go-apps">
-            <span class="row-label">Ordenar, favoritos y ocultar
-              <span class="row-hint">Los favoritos aparecen primero en Inicio${hiddenCount ? `. Ocultas: ${hiddenCount}` : ''}</span>
+            <span class="row-label">Ordenar, favoritos y extras
+              <span class="row-hint">Los favoritos aparecen primero${counts.length ? `. ${counts.join('. ')}` : ''}</span>
             </span>
             <span aria-hidden="true" style="transform:rotate(180deg);display:inline-flex;width:1.75rem">${ICON.back}</span>
           </button>
@@ -265,9 +289,14 @@ function renderSettings() {
         <div class="rows">
           ${choiceRow('theme', 'Tema', THEMES)}
           ${choiceRow('cardSize', 'Tamaño de las tarjetas', CARD_SIZES)}
-          ${switchRow('showClock', 'Mostrar la hora')}
           ${switchRow('showDate', 'Mostrar la fecha')}
           ${switchRow('showReturnHint', 'Recordar cómo volver', 'Muestra en Inicio cómo regresar desde una app')}
+        </div>
+      </section>
+      <section class="group">
+        <h2>Noticias</h2>
+        <div class="rows">
+          ${choiceRow('saverDelay', 'Mostrar noticias si no se usa durante', SAVER_DELAYS)}
         </div>
       </section>
       <section class="group">
@@ -296,16 +325,19 @@ function renderSettingsApps() {
   const rows = order.map((id, i) => {
     const s = SERVICE_BY_ID[id];
     const fav = settings.favorites.includes(id);
-    const hidden = settings.hidden.includes(id);
+    const place = placementOf(settings, id);
+    const hidden = place === 'hidden';
+    const placeLabel = { home: 'En Inicio', extra: 'En Extras', hidden: 'Oculta' }[place];
+    const placeIcon = { home: ICON.home, extra: ICON.grid, hidden: ICON.eyeOff }[place];
     return `
       <div class="app-row${hidden ? ' is-hidden' : ''}">
         <span class="app-swatch" style="--bg-card:${esc(s.bg)};--fg-card:${esc(s.fg)}" aria-hidden="true">${esc(s.name)}</span>
-        <span class="app-row-name">${esc(s.name)}${hidden ? '<span class="app-row-pos">Oculta</span>' : ''}</span>
+        <span class="app-row-name">${esc(s.name)}</span>
         <span class="app-actions">
           <button class="icon-btn icon-btn--wide" type="button" data-nav data-fav="${id}" data-focus-key="f:${id}"
             aria-pressed="${fav}">${fav ? ICON.star : ICON.starLine}<span>${fav ? 'Favorito' : 'Favorito'}</span></button>
-          <button class="icon-btn icon-btn--wide" type="button" data-nav data-hide="${id}" data-focus-key="h:${id}"
-            aria-label="${hidden ? 'Mostrar' : 'Ocultar'} ${esc(s.name)}">${hidden ? ICON.eyeOff : ICON.eye}<span>${hidden ? 'Mostrar' : 'Ocultar'}</span></button>
+          <button class="icon-btn icon-btn--place" type="button" data-nav data-place-btn="${id}" data-place="${place}" data-focus-key="p:${id}"
+            aria-label="${esc(s.name)}: ${placeLabel}. Pulsa para cambiar">${placeIcon}<span>${placeLabel}</span></button>
           <button class="icon-btn" type="button" data-nav data-move="${id}" data-dir="-1" data-focus-key="u:${id}"
             aria-label="Subir ${esc(s.name)}" ${i === 0 ? 'disabled' : ''}>${ICON.up}</button>
           <button class="icon-btn" type="button" data-nav data-move="${id}" data-dir="1" data-focus-key="d:${id}"
@@ -314,8 +346,78 @@ function renderSettingsApps() {
       </div>`;
   }).join('');
   return `
-    <div class="screen-head">${backHTML()}<h1 class="screen-title">Ordenar y favoritos</h1></div>
-    <div class="settings"><div class="rows">${rows}</div></div>`;
+    <div class="screen-head">${backHTML()}<h1 class="screen-title">Ordenar, favoritos y extras</h1></div>
+    <div class="settings">
+      <p class="help-lead">Pulsa el botón de ubicación para pasar cada app de Inicio a Extras, a oculta y otra vez a Inicio.</p>
+      <div class="rows">${rows}</div>
+    </div>`;
+}
+
+/* Pantalla de Noticias: una noticia grande y, debajo, la tira con todas.
+   Es una pantalla más de CyoTools TV: Esc o «Volver» regresan siempre.
+   «Leer la noticia» abre la web del medio, como cualquier app. */
+
+let newsIndex = 0;
+
+let brokenTimer = 0;
+
+function renderNews() {
+  view.className = 'view view--news';
+  const { status, updated } = getNews();
+  const items = showable();
+  const head = `
+    <div class="screen-head">${backHTML()}<h1 class="screen-title">Noticias</h1>
+      ${updated ? `<p class="screen-meta">Actualizadas ${esc(timeAgo(updated))}</p>` : ''}
+    </div>`;
+  if (!items.length) {
+    const msg = status === 'loading'
+      ? '<h2>Cargando noticias…</h2><p>Un momento.</p>'
+      : '<h2>No hay noticias ahora mismo</h2><p>Se actualizan cada 30 minutos. Comprueba la conexión o vuelve a intentarlo más tarde.</p>';
+    return `${head}<div class="empty">${msg}</div>`;
+  }
+  newsIndex = Math.min(Math.max(newsIndex, 0), items.length - 1);
+  const it = items[newsIndex];
+  const when = timeAgo(it.published);
+  const strip = items.map((n, i) => `
+    <button class="news-thumb" type="button" data-nav data-news-idx="${i}" data-focus-key="nt:${esc(n.id)}"
+      ${i === newsIndex ? 'aria-current="true"' : ''} aria-label="${esc(n.title)}">
+      <span class="news-thumb-img">${visualHTML(n)}</span>
+      <span class="news-thumb-title">${esc(n.title)}</span>
+    </button>`).join('');
+  return `${head}
+    <div class="news-hero">
+      ${visualHTML(it, { eager: true })}
+      <div class="news-shade"></div>
+      <div class="news-text">
+        <p class="news-meta"><span class="saver-source" style="--src:${esc(it.color)}">${esc(it.source)}</span>${when ? `<span>${esc(when)}</span>` : ''}</p>
+        <h2 class="news-title">${esc(it.title)}</h2>
+        ${it.summary ? `<p class="news-summary">${esc(it.summary)}</p>` : ''}
+        <button class="btn btn--light" type="button" data-nav data-action="news-read" data-focus-key="news-read">Leer en ${esc(it.source || 'la web')}</button>
+      </div>
+      <button class="news-arrow news-arrow--prev" type="button" data-nav data-action="news-prev" data-focus-key="news-prev" aria-label="Noticia anterior">${ICON.back}</button>
+      <button class="news-arrow news-arrow--next" type="button" data-nav data-action="news-next" data-focus-key="news-next" aria-label="Noticia siguiente">${ICON.back}</button>
+      <p class="news-count">${newsIndex + 1} de ${items.length}</p>
+    </div>
+    <div class="news-strip" data-strip>${strip}</div>`;
+}
+
+function showNews(i, focusKey) {
+  const items = showable();
+  if (!items.length) return;
+  newsIndex = (i + items.length) % items.length;
+  const stripScroll = view.querySelector('[data-strip]')?.scrollLeft ?? 0;
+  render({ focus: focusKey || document.activeElement?.dataset?.focusKey || 'news-read', keepScroll: true });
+  const strip = view.querySelector('[data-strip]');
+  if (strip) {
+    strip.scrollLeft = stripScroll;
+    strip.querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+}
+
+function readNews() {
+  const it = showable()[newsIndex];
+  if (!it) return;
+  openExternal({ url: it.link, title: it.source || 'la noticia', label: 'Abriendo la noticia en', glow: it.color, lastKey: 'news' });
 }
 
 function renderHelp() {
@@ -357,8 +459,6 @@ function applyDisplaySettings() {
   root.dataset.theme = settings.theme;
   root.dataset.size = settings.cardSize;
   root.classList.toggle('big-cursor', settings.bigCursor);
-  $('#clock').hidden = !settings.showClock && !settings.showDate;
-  $('#clock-time').hidden = !settings.showClock;
   $('#clock-date').hidden = !settings.showDate;
   updateClock();
 }
@@ -369,23 +469,33 @@ function renderHint() {
     hint.innerHTML = `Para volver aquí desde cualquier app, ${returnKeysHTML()}.`;
   } else if (route === 'home') {
     hint.innerHTML = '';
+  } else if (route === 'news') {
+    hint.innerHTML = '<kbd>←</kbd> <kbd>→</kbd> cambian de noticia. Pulsa <kbd>Esc</kbd> para volver.';
   } else {
     hint.innerHTML = 'Pulsa <kbd>Esc</kbd> para volver a la pantalla anterior.';
   }
 }
 
-function render({ focus = 'restore' } = {}) {
+function render({ focus = 'restore', keepScroll = false } = {}) {
   const html = {
     home: renderHome,
     apps: renderApps,
     settings: renderSettings,
     'settings/apps': renderSettingsApps,
     help: renderHelp,
+    news: renderNews,
   }[route]();
+  const scroll = view.scrollTop;
   view.innerHTML = html;
-  view.scrollTop = 0;
+  view.scrollTop = keepScroll ? scroll : 0;
   renderHint();
   wireLogos();
+  wireVisuals(view, () => {
+    // Una foto rota: esa noticia se quita de la lista (agrupando cambios).
+    if (route !== 'news') return;
+    clearTimeout(brokenTimer);
+    brokenTimer = setTimeout(() => showNews(newsIndex), 250);
+  });
 
   if (route !== 'home') document.title = `${$('.screen-title')?.textContent ?? ''} · CyoTools TV`;
   else document.title = 'CyoTools TV';
@@ -397,6 +507,7 @@ function render({ focus = 'restore' } = {}) {
   } else if (focus && focus !== 'first') {
     target = view.querySelector(`[data-focus-key="${CSS.escape(focus)}"]`);
   }
+  if (!target && route === 'news') target = view.querySelector('[data-focus-key="news-read"]');
   if (!target) {
     target = view.querySelector('.card[data-nav]:not(.card--all)') || view.querySelector('[data-nav]');
   }
@@ -443,42 +554,114 @@ document.addEventListener('focusin', (e) => {
  * extensión opcional.
  * ------------------------------------------------------------------ */
 
-function launch(id) {
+// Abre una dirección externa en esta misma pestaña, con la pantalla de
+// confirmación. Lo usan las tarjetas y la búsqueda.
+function openExternal({ url, title, label, glow, lastKey }) {
   if (launching) return;
-  const s = SERVICE_BY_ID[id];
-  if (!s || !SAFE_IDS.has(id)) return;
   if (!navigator.onLine) {
     toast('No hay conexión a Internet. Comprueba la red y vuelve a intentarlo.', 4500);
     return;
   }
   launching = true;
-  try { sessionStorage.setItem(LAST_OPENED_KEY, id); } catch { /* sin almacenamiento: no pasa nada */ }
+  try { sessionStorage.setItem(LAST_OPENED_KEY, lastKey); } catch { /* sin almacenamiento: no pasa nada */ }
 
   const overlay = $('#launch');
-  $('#launch-name').textContent = s.name;
+  $('.launch-label').textContent = label;
+  $('#launch-name').textContent = title;
   $('#launch-hint').innerHTML = `Para volver, ${returnKeysHTML()}.`;
-  overlay.style.setProperty('--launch-glow', s.glow);
+  overlay.style.setProperty('--launch-glow', glow);
   overlay.hidden = false;
 
   // Pequeña pausa para que se vea la confirmación antes de cambiar de página.
   setTimeout(() => {
     try {
-      window.location.assign(s.url);
+      window.location.assign(url);
     } catch (err) {
-      console.error('[CyoTools TV] No se pudo abrir', s.url, err);
+      console.error('[CyoTools TV] No se pudo abrir', url, err);
       resetLaunch();
-      toast(`No se ha podido abrir ${s.name}.`);
+      toast(`No se ha podido abrir ${title}.`);
     }
   }, 380);
 
-  // Si la navegación no llega a producirse (bloqueo, error de red
-  // inmediato), se recupera el menú en lugar de quedarse colgado.
+  // Si la navegación no llega a producirse, se recupera el menú.
   setTimeout(() => {
-    if (document.visibilityState === 'visible' && launching) {
-      resetLaunch();
-    }
+    if (document.visibilityState === 'visible' && launching) resetLaunch();
   }, 15000);
 }
+
+function launch(id) {
+  const s = SERVICE_BY_ID[id];
+  if (!s || !SAFE_IDS.has(id)) return;
+  openExternal({ url: s.url, title: s.name, label: 'Abriendo', glow: s.glow, lastKey: id });
+}
+
+/* ------------------------------------------------------------------ *
+ * Búsqueda
+ * Lo que se escribe se busca en Google. Si parece una dirección web
+ * (marca.com, rtve.es/play…), se abre directamente.
+ * ------------------------------------------------------------------ */
+
+const searchInput = $('#search');
+const searchGo = $('#search-go');
+const LOOKS_LIKE_URL = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?(\/\S*)?$/i;
+
+function searchTarget(query) {
+  const text = query.trim().replace(/\s+/g, ' ');
+  if (!text) return null;
+  if (!text.includes(' ') && LOOKS_LIKE_URL.test(text)) {
+    const url = /^https?:\/\//i.test(text) ? text : `https://${text}`;
+    return { kind: 'web', url, label: text.replace(/^https?:\/\//i, '').replace(/\/$/, '') };
+  }
+  return { kind: 'search', url: `https://www.google.com/search?q=${encodeURIComponent(text)}`, label: text };
+}
+
+function runSearch() {
+  const t = searchTarget(searchInput.value);
+  if (!t) {
+    searchInput.focus();
+    toast('Escribe lo que quieres buscar.');
+    return;
+  }
+  try { sessionStorage.setItem(LAST_QUERY_KEY, searchInput.value.trim()); } catch { /* ignorar */ }
+  openExternal({
+    url: t.url,
+    title: t.kind === 'search' ? `«${t.label}»` : t.label,
+    label: t.kind === 'search' ? 'Buscando en Google' : 'Abriendo',
+    glow: '#4c8bf5',
+    lastKey: 'search',
+  });
+}
+
+function syncSearchButton() {
+  searchGo.hidden = !searchInput.value.trim();
+}
+searchInput.addEventListener('input', syncSearchButton);
+
+// Teclas dentro de la barra de búsqueda: el texto se edita con normalidad
+// (izquierda, derecha, Inicio, Fin, Retroceso…); solo se usan Enter,
+// Escape y la flecha abajo.
+searchInput.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    runSearch();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    if (searchInput.value) {
+      searchInput.value = '';
+      syncSearchButton();
+    } else {
+      const first = view.querySelector('[data-nav]');
+      if (first) focusEl(first);
+    }
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    hideCursorNow();
+    const next = findNext(searchInput, 'ArrowDown');
+    if (next) focusEl(next);
+  }
+  e.stopPropagation(); // el resto de atajos no se aplican mientras se escribe
+});
 
 function resetLaunch() {
   launching = false;
@@ -493,8 +676,24 @@ window.addEventListener('pageshow', (e) => {
     route = parseRoute(location.hash);
     applyDisplaySettings();
     render({ focus: 'restore' });
+    let last = null;
+    try { last = sessionStorage.getItem(LAST_OPENED_KEY); } catch { /* ignorar */ }
+    if (route === 'home' && last === 'search') focusSearch(true);
+    syncSearchButton();
+    keepAwake();
   }
 });
+
+// Al volver de una búsqueda, el texto anterior queda seleccionado: se
+// puede corregir o escribir encima directamente.
+function focusSearch(selectAll = false) {
+  if (!searchInput.value) {
+    try { searchInput.value = sessionStorage.getItem(LAST_QUERY_KEY) || ''; } catch { /* ignorar */ }
+    syncSearchButton();
+  }
+  searchInput.focus({ preventScroll: true });
+  if (selectAll) searchInput.select();
+}
 
 /* ------------------------------------------------------------------ *
  * Acciones
@@ -514,9 +713,15 @@ function toggleFavorite(id) {
   persist();
 }
 
-function toggleHidden(id) {
+// Inicio → Extras → Oculta → Inicio
+function cyclePlacement(id) {
+  const place = placementOf(settings, id);
+  const extras = new Set(settings.extras);
   const hidden = new Set(settings.hidden);
-  if (hidden.has(id)) hidden.delete(id); else hidden.add(id);
+  if (place === 'home') { extras.add(id); }
+  else if (place === 'extra') { extras.delete(id); hidden.add(id); }
+  else { hidden.delete(id); }
+  settings.extras = settings.order.filter((x) => extras.has(x));
   settings.hidden = settings.order.filter((x) => hidden.has(x));
   persist();
 }
@@ -530,6 +735,7 @@ function move(id, dir) {
   settings.order = order;
   settings.favorites = order.filter((x) => settings.favorites.includes(x));
   settings.hidden = order.filter((x) => settings.hidden.includes(x));
+  settings.extras = order.filter((x) => settings.extras.includes(x));
   persist();
 }
 
@@ -567,7 +773,13 @@ document.addEventListener('click', (e) => {
   if (action === 'settings') return go('settings');
   if (action === 'settings-apps') return go('settings/apps');
   if (action === 'help') return go('help');
+  if (action === 'news') return go('news');
+  if (action === 'news-prev') return showNews(newsIndex - 1, 'news-prev');
+  if (action === 'news-next') return showNews(newsIndex + 1, 'news-next');
+  if (action === 'news-read') return readNews();
+  if (t.dataset.newsIdx) return showNews(Number(t.dataset.newsIdx), t.dataset.focusKey);
   if (action === 'reset') return handleReset();
+  if (action === 'search') return runSearch();
 
   if (t.dataset.toggle) {
     const k = t.dataset.toggle;
@@ -586,8 +798,8 @@ document.addEventListener('click', (e) => {
     toggleFavorite(t.dataset.fav);
     return render({ focus: t.dataset.focusKey });
   }
-  if (t.dataset.hide) {
-    toggleHidden(t.dataset.hide);
+  if (t.dataset.placeBtn) {
+    cyclePlacement(t.dataset.placeBtn);
     return render({ focus: t.dataset.focusKey });
   }
   if (t.dataset.move) {
@@ -631,6 +843,9 @@ function pointerMoved(e) {
 document.addEventListener('pointermove', (e) => {
   if (!pointerMoved(e) || launching) return;
   showCursor();
+  // Mientras se escribe una búsqueda, rozar el touchpad no quita el foco
+  // de la barra (si no, Enter abriría la tarjeta sobre la que pasó el cursor).
+  if (document.activeElement === searchInput && searchInput.value.trim()) return;
 
   const grid = e.target.closest?.('[data-grid]');
   if (grid) {
@@ -681,6 +896,14 @@ document.addEventListener('keydown', (e) => {
   const active = document.activeElement;
   const inUI = active === document.body || active === view || active?.hasAttribute?.('data-nav');
 
+  // En Noticias, ← y → cambian de noticia mientras se está en la noticia grande.
+  if (route === 'news' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && active?.dataset?.action === 'news-read') {
+    e.preventDefault();
+    hideCursorNow();
+    showNews(newsIndex + (e.key === 'ArrowRight' ? 1 : -1), 'news-read');
+    return;
+  }
+
   if (isArrowKey(e.key) && inUI) {
     hideCursorNow();
     const next = findNext(active?.hasAttribute?.('data-nav') ? active : null, e.key);
@@ -707,12 +930,12 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  if ((e.key === 'f' || e.key === 'F') && active?.dataset?.service) {
-    e.preventDefault();
-    const id = active.dataset.service;
-    toggleFavorite(id);
-    render({ focus: `svc:${id}` });
-    return;
+  // Escribir en cualquier momento empieza una búsqueda, como en un
+  // televisor: la letra pulsada pasa directamente a la barra.
+  if (e.key.length === 1 && e.key !== ' ' && route !== 'settings/apps') {
+    hideCursorNow();
+    searchInput.focus({ preventScroll: true });
+    return; // sin preventDefault: Chrome escribe la letra en la barra
   }
 
   if ((e.key === 'Enter' || e.key === ' ') && (active === document.body || active === view)) {
@@ -778,6 +1001,41 @@ window.addEventListener('resize', () => {
 });
 
 /* ------------------------------------------------------------------ *
+ * Mantener el equipo despierto
+ * Mientras CyoTools TV está en pantalla, se pide a Chrome que no apague
+ * la pantalla ni deje que Windows suspenda el equipo (Screen Wake Lock).
+ * Chrome lo libera solo al cambiar de página, y se vuelve a pedir al
+ * regresar. Para mantenerlo también dentro de las apps, la extensión hace
+ * lo mismo de forma permanente.
+ * ------------------------------------------------------------------ */
+
+let wakeLock = null;
+
+async function keepAwake() {
+  if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+  if (wakeLock && !wakeLock.released) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    root.dataset.wakeLock = 'on';
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+      root.dataset.wakeLock = 'off';
+    });
+  } catch (err) {
+    root.dataset.wakeLock = 'off';
+    console.info('[CyoTools TV] No se pudo mantener la pantalla encendida:', err.message);
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') keepAwake();
+});
+// Algunos sistemas lo deniegan hasta la primera interacción: se reintenta.
+['pointerdown', 'keydown'].forEach((type) => {
+  document.addEventListener(type, () => { if (!wakeLock) keepAwake(); }, { passive: true });
+});
+
+/* ------------------------------------------------------------------ *
  * Arranque
  * ------------------------------------------------------------------ */
 
@@ -792,8 +1050,31 @@ function init() {
   if (route === 'home' && last && SAFE_IDS.has(last)) lastFocusByRoute.set('home', `svc:${last}`);
 
   render({ focus: 'restore' });
+  if (route === 'home' && last === 'search') focusSearch(true);
+  syncSearchButton();
   scheduleClock();
   showCursor();
+  keepAwake();
+
+  startNews();
+  onNews(() => { if (route === 'news') render({ focus: 'restore', keepScroll: true }); });
+
+  // Para pruebas: ?idle=10&slide=4 abre el carrusel tras 10 s y cambia
+  // de noticia cada 4 s.
+  const params = new URLSearchParams(location.search);
+  const testIdle = Number(params.get('idle'));
+  const testSlide = Number(params.get('slide'));
+  initScreensaver({
+    slideMs: testSlide >= 2 && testSlide <= 60 ? testSlide * 1000 : undefined,
+    delayMs: () => {
+      if (settings.saverDelay === 'off') return 0;
+      if (testIdle > 0 && testIdle <= 600) return testIdle * 1000;
+      return Number(settings.saverDelay) * 60000;
+    },
+    canStart: () => !launching && route !== 'news' && document.visibilityState === 'visible',
+    onOpen: () => root.classList.add('cursor-off'),
+    onClose: () => showCursor(),
+  });
   // Persistencia: guarda la versión normalizada (repara datos dañados).
   persist();
 

@@ -30,11 +30,22 @@
     <button class="brand" type="button" data-nav data-action="home" aria-label="CyoTools TV, ir al inicio">
       <span class="brand-word">CyoTools</span><span class="brand-tv">TV</span>
     </button>
+    <div class="search" id="search-box" role="search">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+      <input class="search-input" id="search" type="text" data-nav data-focus-key="search"
+        placeholder="Buscar en Google o escribir una web" aria-label="Buscar en Google o escribir una dirección web"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" maxlength="300">
+      <button class="search-go" id="search-go" type="button" data-action="search" tabindex="-1" hidden>Buscar</button>
+    </div>
     <div class="topbar-end">
       <div class="clock" id="clock" aria-live="off">
         <time class="clock-time" id="clock-time"></time>
         <span class="clock-date" id="clock-date"></span>
       </div>
+      <button class="pill pill--news" type="button" data-nav data-action="news">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="15" rx="2"/><path d="M17 8.5h2.5a1.5 1.5 0 0 1 1.5 1.5v7.5a2 2 0 0 1-4 0"/><path d="M6.5 8.5h7M6.5 12h7M6.5 15.5h4"/></svg>
+        <span>Noticias</span>
+      </button>
       <button class="pill" type="button" data-nav data-action="help">Cómo volver</button>
       <button class="pill" type="button" data-nav data-action="settings">Ajustes</button>
     </div>

@@ -3,6 +3,8 @@ name: Publicar CyoTools TV
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -12,7 +14,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -22,7 +24,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Recoger noticias
+        continue-on-error: true
+        run: python3 scripts/fetch_news.py --out tv/news.json --previous "${{ steps.pages.outputs.base_url }}/news.json"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: tv

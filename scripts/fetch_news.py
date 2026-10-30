@@ -28,9 +28,9 @@ FEEDS = [
     {'name': 'La Vanguardia','color': '#16324f', 'url': 'https://www.lavanguardia.com/rss/home.xml'},
 ]
 
-MAX_ITEMS = 36          # noticias en total
+MAX_ITEMS = 30          # noticias en total (las más recientes)
 PER_SOURCE = 8          # máximo por medio, para que haya variedad
-MAX_AGE_HOURS = 36      # se descartan las antiguas
+MAX_AGE_HOURS = 12      # se descartan las de más de 12 horas
 GOOD_WIDTH = 900        # por debajo, se busca una foto más grande en la noticia
 TIMEOUT = 12
 UA = 'Mozilla/5.0 (compatible; CyoToolsTV/1.0; +https://cyotools.com/tv/)'
@@ -279,19 +279,21 @@ def main():
             seen.add(key)
             merged.append(it)
 
+    # Las más recientes primero; se quedan las MAX_ITEMS más nuevas.
+    merged.sort(key=lambda i: i['published'] or '', reverse=True)
+    merged = merged[:MAX_ITEMS]
+
     # Fotos grandes: si la del RSS es pequeña o de tamaño desconocido, se
     # busca la foto principal de la noticia.
     if not args.no_og:
-        need = [it for it in merged[:MAX_ITEMS + 10] if not it['image'] or it['imageWidth'] < GOOD_WIDTH]
+        need = [it for it in merged if not it['image'] or it['imageWidth'] < GOOD_WIDTH]
         with cf.ThreadPoolExecutor(8) as pool:
             for it, (url, w) in zip(need, pool.map(lambda i: og_image(i['link']), need)):
                 if url:
                     it['image'], it['imageWidth'] = url, w
 
-    # Primero las que tienen foto: el carrusel es visual.
-    with_img = [i for i in merged if i['image']]
-    without = [i for i in merged if not i['image']]
-    final = (with_img + without)[:MAX_ITEMS]
+    final = merged
+    with_img = [i for i in final if i['image']]
     for it in final:
         it['id'] = hashlib.sha1(it['link'].encode()).hexdigest()[:12]
 
@@ -299,7 +301,7 @@ def main():
         try:
             prev = json.loads(fetch(args.previous))
             if prev.get('items'):
-                prev['stale'] = True
+                prev['stale'] = True  # la web lo indica en la pantalla Noticias
                 log('Ningún medio respondió: se conserva la versión anterior.')
                 final_doc = prev
                 with open(args.out, 'w', encoding='utf-8') as f:

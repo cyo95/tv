@@ -8,12 +8,12 @@
 // y esa primera pulsación no hace nada más.
 
 import { getWallpapers, wallpaperUrl } from './wallpapers.js';
-import { showable, timeAgo } from './news.js';
+import { showable, timeAgo, arrivedLater, isRecent, refreshNewsIfOlderThan } from './news.js';
 import { getWeather, describe, iconSVG } from './weather.js';
 import { qrSVG, shortLink } from './qr.js';
 
 const PHOTO_MS = 25000;   // cada fotografía
-const READ_MS = 15000;    // cada noticia: tiempo para leerla…
+const READ_MS = 25000;    // cada noticia: tiempo para leerla…
 const QR_MS = 5000;       // …y después, el código QR
 const COUNTDOWN = 5;      // «¿Te interesa? Código QR en 5, 4, 3, 2, 1»
 const HINT_EVERY_MS = 45000; // el aviso «pulsa cualquier tecla» aparece de vez en cuando…
@@ -75,7 +75,6 @@ export function initScreensaver({
   let hintTimers = [];
   let clockTimer = 0;
   let photoIndex = -1;
-  let newsIndex = 0;
   let moved = 0;
   let swallowUntil = 0;
   let flip = false;
@@ -162,7 +161,7 @@ export function initScreensaver({
   }
 
   /* --- Noticias, de una en una ---
-     Cada noticia: 15 s para leerla (foto, medio, titular y entradilla).
+     Cada noticia: 25 s para leerla (foto, medio, titular y entradilla).
      En los últimos 5 s de lectura, un aviso discreto cuenta atrás:
      «¿Te interesa? Código QR en 5…1». Después, durante 5 s, la entradilla
      deja sitio al código QR junto al titular, con la instrucción para
@@ -171,9 +170,25 @@ export function initScreensaver({
   const later = (fn, ms) => newsTimers.push(setTimeout(fn, ms));
   const clearNews = () => { newsTimers.forEach(clearTimeout); newsTimers = []; };
 
-  function orderedNews() {
+  // Orden aleatorio sin repetir: cada noticia sale una vez antes de que se
+  // repita ninguna. Excepción: si llega una noticia nueva mientras el
+  // equipo está encendido (última hora), sale la siguiente.
+  const shown = new Set();
+  let lastId = null;
+
+  function pickNews() {
     const all = showable();
-    return [...all.filter((n) => n.image), ...all.filter((n) => !n.image)];
+    if (!all.length) return null;
+    let pending = all.filter((n) => !shown.has(n.id));
+    if (!pending.length) {
+      shown.clear();
+      pending = all.length > 1 ? all.filter((n) => n.id !== lastId) : all;
+    }
+    const fresh = pending.filter(arrivedLater).sort((a, b) => b.arrivedAt - a.arrivedAt);
+    const item = fresh[0] || pending[Math.floor(Math.random() * pending.length)];
+    shown.add(item.id);
+    lastId = item.id;
+    return item;
   }
 
   function panelHTML(n) {
@@ -188,7 +203,7 @@ export function initScreensaver({
         <div class="np-photo">${photo}</div>
         <div class="np-body">
           <p class="np-meta">
-            <span class="np-source">${esc(n.source)}</span>${when ? `<span class="np-when">${esc(when)}</span>` : ''}
+            ${isRecent(n) ? '<span class="np-new">Última hora</span>' : ''}<span class="np-source">${esc(n.source)}</span>${when ? `<span class="np-when">${esc(when)}</span>` : ''}
             <span class="np-countdown" aria-hidden="true">¿Te interesa? Código QR en <b>${COUNTDOWN}</b></span>
           </p>
           <div class="np-layers">
@@ -215,15 +230,13 @@ export function initScreensaver({
 
   function nextNews() {
     clearNews();
-    const list = orderedNews();
-    if (!list.length) {
+    const item = pickNews();
+    if (!item) {
       newsBox.hidden = true;
       later(nextNews, 5000);
       return;
     }
     newsBox.hidden = false;
-    const item = list[newsIndex % list.length];
-    newsIndex = (newsIndex + 1) % list.length;
     const hasOld = !!newsBox.firstElementChild;
     newsBox.classList.remove('is-in');
 
@@ -277,6 +290,7 @@ export function initScreensaver({
     el.hidden = false;
     tickClock();
     clockTimer = setInterval(tickClock, 10000);
+    refreshNewsIfOlderThan(3 * 60 * 1000);
     renderWeather();
     if (onOpen) onOpen();
     nextPhoto();

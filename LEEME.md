@@ -14,7 +14,7 @@ tv/                     → se sube tal cual a https://cyotools.com/tv/
   assets/fonts/         → Atkinson Hyperlegible Next (licencia OFL)
   assets/logos/         → vacía: aquí puedes poner logotipos oficiales
 extension/              → extensión «CyoTools TV – Inicio»
-scripts/fetch_news.py   → recoge las noticias (lo ejecuta GitHub cada 30 min)
+scripts/fetch_news.py   → recoge las noticias (lo ejecuta GitHub cada 15 min)
 scripts/fetch_wallpapers.py → recoge los fondos del salvapantallas (ídem)
 tests/                  → pruebas automáticas (Playwright)
 .github/workflows/      → publicación automática en GitHub Pages
@@ -97,6 +97,9 @@ El cursor se muestra grande y se oculta tras 4 segundos sin moverse (ambas cosas
 
 - **Botón «Noticias»** en la cabecera: pantalla con la noticia en grande y la tira de todas debajo. `←` `→` cambian de noticia, «Leer en…» abre la noticia en la web del medio y `Esc` o «Volver» regresan. Si abres una noticia, vuelves como desde cualquier app.
 - **Sin deportes:** se descartan por la sección de la web (`/deportes/`, `/futbol/`…), por la categoría del RSS y por palabras que solo salen en noticias deportivas (LaLiga, Champions, Real Madrid, Alcaraz, Fórmula 1…). La lista está al principio de `scripts/fetch_news.py`.
+- **Frescura:** GitHub recoge las noticias cada 15 minutos (a los minutos 4, 19, 34 y 49 de cada hora) y solo guarda las 30 más recientes de las últimas 12 horas. La web vuelve a leerlas cada 5 minutos y también al empezar el salvapantallas.
+- **Orden en el salvapantallas:** aleatorio y sin repetir ninguna hasta que han salido todas. Si llega una noticia nueva con el equipo encendido, sale la siguiente. Las publicadas hace menos de una hora llevan la etiqueta «Última hora». En la pantalla Noticias van de la más reciente a la más antigua.
+- **Si dejan de actualizarse:** la pantalla Noticias muestra en amarillo «Sin actualizar desde hace…» cuando el archivo tiene más de 2 horas. GitHub no garantiza la hora exacta de las tareas programadas y a veces las retrasa; en *Actions › Publicar CyoTools TV › Run workflow* se puede lanzar a mano.
 - **De dónde salen:** un navegador no puede leer los RSS de otros sitios, así que GitHub Actions ejecuta `scripts/fetch_news.py` cada 30 minutos, junta las portadas de El País, RTVE, El Mundo, 20minutos, Europa Press, elDiario.es y La Vanguardia, y publica el resultado como `news.json` junto a la web. Si un medio falla, se omite; si fallan todos, se mantiene la última versión publicada.
 - **Fotos:** se usa la más grande que ofrezca el medio; si es pequeña, se busca la foto principal de la noticia. Si aun así es pequeña, se muestra enmarcada en lugar de ampliarla hasta verse borrosa. Las fotos que no cargan se saltan.
 - **Cambiar los medios:** edita la lista `FEEDS` al principio de `scripts/fetch_news.py`. En cada ejecución, la pestaña *Actions* muestra cuántas noticias dio cada medio.
@@ -109,7 +112,7 @@ A los 10 segundos sin tocar nada aparece un salvapantallas pensado solo para mir
 - **Fotografías a pantalla completa** de paisajes, naturaleza, animales y lugares del mundo, con un movimiento de cámara muy lento. Cambian cada 25 segundos con un fundido. Arriba a la izquierda, discreto, el lugar y el autor de la foto.
 - **Hora, fecha y el tiempo** abajo a la izquierda: temperatura, cielo, máxima y mínima de tu ciudad.
 - **Una noticia cada vez**, abajo a la derecha, en un panel de cristal oscuro que deja ver la foto detrás: foto de la noticia, periódico, hace cuánto, titular y entradilla.
-  - 15 segundos para leerla. En los últimos 5, un aviso discreto cuenta atrás: «¿Te interesa? Código QR en 5… 4… 3… 2… 1».
+  - 25 segundos para leerla. En los últimos 5, un aviso discreto cuenta atrás: «¿Te interesa? Código QR en 5… 4… 3… 2… 1».
   - Después, 5 segundos de QR: la entradilla deja sitio al código, junto al titular y la foto, con la instrucción «Escanea el código con el móvil para leer la noticia completa». El QR se genera en el propio navegador y lleva directamente a la noticia (sin marcas de seguimiento, para que el código sea más simple y se lea mejor desde lejos).
   - Luego pasa a la siguiente noticia. Una fina línea en la base del panel indica el tiempo que le queda.
 - **Aviso discreto** «Pulsa cualquier tecla o mueve el cursor para volver»: aparece abajo en el centro de vez en cuando (cada 45 segundos) y se va solo a los 6.
@@ -144,6 +147,7 @@ Con el proyecto servido en local (`python3 -m http.server 8765` desde esta carpe
 python3 tests/test_launcher.py     # 55 comprobaciones
 python3 tests/test_screensaver.py  # 44 comprobaciones
 python3 tests/test_news.py         # 15 comprobaciones
+python3 tests/test_news_order.py   # 7 comprobaciones
 python3 tests/test_fetch_news.py   # 9 comprobaciones
 python3 tests/test_extension.py    # 13 comprobaciones
 ```

@@ -5,7 +5,7 @@ import {
 } from './storage.js';
 import { findNext, isArrowKey } from './spatial-nav.js';
 import {
-  startNews, getNews, onNews, showable, timeAgo, visualHTML, wireVisuals,
+  startNews, getNews, onNews, showable, timeAgo, visualHTML, wireVisuals, isStale, isRecent,
 } from './news.js';
 import { initScreensaver } from './screensaver.js';
 import { startWallpapers } from './wallpapers.js';
@@ -456,7 +456,9 @@ function renderNews() {
   const items = showable();
   const head = `
     <div class="screen-head">${backHTML()}<h1 class="screen-title">Noticias</h1>
-      ${updated ? `<p class="screen-meta">Actualizadas ${esc(timeAgo(updated))}</p>` : ''}
+      ${updated ? (isStale()
+        ? `<p class="screen-meta screen-meta--warn">Sin actualizar desde ${esc(timeAgo(updated))}</p>`
+        : `<p class="screen-meta">Actualizadas ${esc(timeAgo(updated))}</p>`) : ''}
     </div>`;
   if (!items.length) {
     const msg = status === 'loading'
@@ -478,7 +480,7 @@ function renderNews() {
       ${visualHTML(it, { eager: true })}
       <div class="news-shade"></div>
       <div class="news-text">
-        <p class="news-meta"><span class="saver-source" style="--src:${esc(it.color)}">${esc(it.source)}</span>${when ? `<span>${esc(when)}</span>` : ''}</p>
+        <p class="news-meta">${isRecent(it) ? '<span class="np-new">Última hora</span>' : ''}<span class="saver-source" style="--src:${esc(it.color)}">${esc(it.source)}</span>${when ? `<span>${esc(when)}</span>` : ''}</p>
         <h2 class="news-title">${esc(it.title)}</h2>
         ${it.summary ? `<p class="news-summary">${esc(it.summary)}</p>` : ''}
         <button class="btn btn--light" type="button" data-nav data-action="news-read" data-focus-key="news-read">Leer en ${esc(it.source || 'la web')}</button>
@@ -1150,7 +1152,9 @@ function init() {
   showCursor();
   keepAwake();
 
-  startNews();
+  // Pruebas: ?newsevery=5 relee las noticias cada 5 s.
+  const newsEvery = Number(new URLSearchParams(location.search).get('newsevery'));
+  startNews(newsEvery >= 2 && newsEvery <= 600 ? newsEvery * 1000 : undefined);
   onNews(() => { if (route === 'news') render({ focus: 'restore', keepScroll: true }); });
 
   startWallpapers();

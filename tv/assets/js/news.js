@@ -1,11 +1,15 @@
 // Noticias de España.
 //
-// Las recoge GitHub Actions cada 30 minutos (scripts/fetch_news.py) y las
+// Las recoge GitHub Actions cada 15 minutos (scripts/fetch_news.py) y las
 // publica junto a la web como news.json. Aquí solo se lee ese archivo:
 // ningún navegador puede leer directamente el RSS de otro sitio.
+// La web lo vuelve a leer cada 5 minutos para que lo nuevo llegue pronto.
 
 const NEWS_URL = './news.json';
-const REFRESH_MS = 15 * 60 * 1000;
+let refreshMs = 5 * 60 * 1000;
+let lastLoad = 0;
+const pageStart = Date.now();
+const arrived = new Map(); // id → cuándo la vio esta página por primera vez
 const LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
 
 let state = { status: 'loading', items: [], updated: null };
@@ -56,7 +60,22 @@ export async function loadNews() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     const items = (Array.isArray(json.items) ? json.items : []).map(normalize).filter(Boolean);
-    state = { status: items.length ? 'ready' : 'empty', items, updated: json.updated ? new Date(json.updated) : null };
+    // Las más recientes primero.
+    items.sort((a, b) => (b.published?.getTime() || 0) - (a.published?.getTime() || 0));
+    const now = Date.now();
+    items.forEach((it) => {
+      if (!arrived.has(it.id)) arrived.set(it.id, now);
+      it.arrivedAt = arrived.get(it.id);
+      // Las fotos que ya fallaron siguen marcadas como rotas.
+      const prev = state.items.find((p) => p.id === it.id);
+      if (prev && prev.broken) it.broken = true;
+    });
+    state = {
+      status: items.length ? 'ready' : 'empty',
+      items,
+      updated: json.updated ? new Date(json.updated) : null,
+    };
+    lastLoad = now;
   } catch (err) {
     // Si ya había noticias, se siguen mostrando las anteriores.
     if (!state.items.length) state = { status: 'error', items: [], updated: null };
@@ -72,10 +91,26 @@ export const onNews = (fn) => listeners.add(fn);
 // Noticias que se pueden mostrar en el carrusel (las fotos rotas se saltan).
 export const showable = () => state.items.filter((i) => !i.broken);
 
-export function startNews() {
+export function startNews(everyMs) {
+  if (everyMs) refreshMs = everyMs;
   loadNews();
-  setInterval(loadNews, REFRESH_MS);
+  setInterval(loadNews, refreshMs);
 }
+
+// Vuelve a leer las noticias si la última lectura es de hace más de ms.
+export function refreshNewsIfOlderThan(ms) {
+  if (Date.now() - lastLoad > ms) loadNews();
+}
+
+// Llegó después de abrir la página: es nueva de verdad (última hora).
+export const arrivedLater = (item) => (item.arrivedAt || 0) > pageStart + 1000;
+
+// Publicada hace menos de una hora.
+export const isRecent = (item) => !!item.published && Date.now() - item.published.getTime() < 60 * 60 * 1000;
+
+// Las noticias publicadas hace más de 2 horas indican que no se están
+// actualizando (lo normal es cada 15 minutos).
+export const isStale = () => !!state.updated && Date.now() - state.updated.getTime() > 2 * 60 * 60 * 1000;
 
 const rtf = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
 

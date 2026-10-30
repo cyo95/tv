@@ -29,7 +29,7 @@ checks = [
     ('Descarta noticias antiguas', not any('antigua' in t for t in items)),
     ('Quita la misma noticia repetida en otro medio', sum('PLAN DE VIVIENDA' in t.upper() for t in items) == 1),
     ('Un medio caído no rompe nada', any(not s['ok'] for s in doc['sources'])),
-    ('Primero las noticias con foto', doc['items'][-1]['image'] is None),
+    ('Ordenadas de la más reciente a la más antigua', [i['published'] for i in doc['items']] == sorted([i['published'] for i in doc['items']], reverse=True)),
 ]
 for name, ok in checks:
     print(('OK   ' if ok else 'FAIL ') + name)

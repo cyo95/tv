@@ -7,6 +7,20 @@ importScripts('home.js');
 // pestañas o ventanas, al volver al inicio se cierran para no acumularlas.
 const CLOSE_OTHER_TABS = true;
 
+// Mantiene la pantalla encendida y evita que Windows suspenda el equipo
+// mientras Chrome está abierto, también dentro de Netflix, Spotify o
+// cualquier otra app. Pon false si alguna vez no lo quieres.
+const KEEP_AWAKE = true;
+
+function applyKeepAwake() {
+  if (!chrome.power) return;
+  if (KEEP_AWAKE) chrome.power.requestKeepAwake('display');
+  else chrome.power.releaseKeepAwake();
+}
+applyKeepAwake();
+chrome.runtime.onStartup.addListener(applyKeepAwake);
+chrome.runtime.onInstalled.addListener(applyKeepAwake);
+
 async function mainTab() {
   // La ventana principal es la ventana normal más antigua (la del quiosco).
   const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] });

@@ -2,21 +2,37 @@
   "manifest_version": 3,
   "name": "CyoTools TV – Inicio",
   "short_name": "CyoTools TV",
-  "version": "1.1.0",
-  "description": "Botón de Inicio en la esquina superior izquierda y atajo de teclado para volver a CyoTools TV desde cualquier app.",
-  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" },
-  "permissions": ["storage"],
-  "background": { "service_worker": "background.js" },
+  "version": "1.2.0",
+  "description": "Botón de Inicio en la esquina superior izquierda, atajo para volver a CyoTools TV y equipo siempre despierto.",
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "permissions": [
+    "storage",
+    "power"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "commands": {
     "go-home": {
-      "suggested_key": { "default": "Ctrl+Shift+Home" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+Home"
+      },
       "description": "Volver a CyoTools TV"
     }
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["home.js", "overlay.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "home.js",
+        "overlay.js"
+      ],
       "run_at": "document_end"
     }
   ]

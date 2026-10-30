@@ -4,7 +4,7 @@ https://usuario.github.io/tv/ (como en GitHub Pages) se redirige al servidor loc
 servicios a una página de prueba con un reproductor que puede ponerse a
 pantalla completa.
 """
-import asyncio, sys, tempfile, urllib.request
+import asyncio, sys, tempfile, urllib.request, urllib.error
 from pathlib import Path
 from playwright.async_api import async_playwright
 
@@ -28,9 +28,12 @@ async def main():
         # Simula GitHub Pages: https://usuario.github.io/tv/ sirve la carpeta local.
         async def to_local(route):
             path = route.request.url.split('github.io', 1)[1]
-            with urllib.request.urlopen(LOCAL + path) as r:
-                body = r.read(); ctype = r.headers.get('Content-Type', 'text/html')
-            await route.fulfill(status=200, body=body, content_type=ctype)
+            try:
+                with urllib.request.urlopen(LOCAL + path) as r:
+                    body = r.read(); ctype = r.headers.get('Content-Type', 'text/html')
+                await route.fulfill(status=200, body=body, content_type=ctype)
+            except urllib.error.HTTPError as e:
+                await route.fulfill(status=e.code, body='')
         async def fake(route):
             await route.fulfill(status=200, content_type='text/html', body=FAKE)
         await ctx.route('https://usuario.github.io/**', to_local)
@@ -103,6 +106,8 @@ async def main():
         # El atajo del navegador (Ctrl+Mayús+Inicio) lo gestiona Chrome, no la
         # página: no se puede pulsar desde Playwright. Se comprueba que el
         # comando existe y se ejecuta la misma función que usa.
+        power = await sw.evaluate("typeof chrome.power?.requestKeepAwake === 'function' && chrome.runtime.getManifest().permissions.includes('power')")
+        check('Mantener despierto: permiso y API de energía disponibles', power)
         cmds = await sw.evaluate('chrome.commands.getAll().then(c => c.map(x => x.name + "=" + (x.shortcut || "sin asignar")))')
         check('Atajo de teclado registrado', any(c.startswith('go-home=') for c in cmds), ', '.join(cmds))
 
@@ -112,4 +117,14 @@ async def main():
     print(f'\n{len(results) - len(failed)}/{len(results)} pruebas superadas')
     sys.exit(1 if failed else 0)
 
-asyncio.run(main())
+# news.json lo genera GitHub Actions; durante la prueba se usa uno vacío
+# (el service worker lo pide al servidor y no pasa por las rutas de prueba).
+TV = Path(__file__).resolve().parent.parent / 'tv'
+TEMP = [TV / 'news.json', TV / 'wallpapers.json']
+for f in TEMP:
+    f.write_text('{"updated":null,"items":[]}')
+try:
+    asyncio.run(main())
+finally:
+    for f in TEMP:
+        f.unlink(missing_ok=True)

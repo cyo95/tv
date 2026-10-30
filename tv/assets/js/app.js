@@ -1162,16 +1162,28 @@ function init() {
   const testIdle = Number(params.get('idle'));
   const testSlide = Number(params.get('slide'));
   const quick = testSlide >= 2 && testSlide <= 60 ? testSlide * 1000 : undefined;
+  const num = (v, min, max) => {
+    const n = Number(v);
+    return n >= min && n <= max ? n * 1000 : undefined;
+  };
   const saver = initScreensaver({
     photoMs: quick,
-    newsMs: quick,
+    // Pruebas: ?read=8&qr=4&hint=10 acortan los tiempos de las noticias y del aviso.
+    readMs: num(params.get('read'), 6, 60),
+    qrMs: num(params.get('qr'), 2, 30),
+    hintEveryMs: num(params.get('hint'), 3, 300),
     getPlaceName: () => settings.weatherPlace.name,
     delayMs: () => {
       if (settings.saverDelay === 'off') return 0;
       if (testIdle > 0 && testIdle <= 600) return testIdle * 1000;
-      return Number(settings.saverDelay) * 60000;
+      return SAVER_DELAYS.find((o) => o.id === settings.saverDelay)?.ms ?? 10000;
     },
-    canStart: () => !launching && document.visibilityState === 'visible',
+    // No salta mientras se escribe ni mientras se lee la pantalla Noticias.
+    canStart: () => {
+      const ae = document.activeElement;
+      const typing = ae && ae.tagName === 'INPUT' && ae.value.trim();
+      return !launching && !typing && route !== 'news' && document.visibilityState === 'visible';
+    },
     onOpen: () => root.classList.add('cursor-off'),
     onClose: () => showCursor(),
   });

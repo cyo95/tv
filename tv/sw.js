@@ -5,7 +5,7 @@
 // Siempre intenta primero la red, así que las actualizaciones se ven al
 // momento; la copia solo se usa si la red no responde.
 
-const CACHE = 'cyotools-tv-v4';
+const CACHE = 'cyotools-tv-v5';
 const SHELL = [
   './',
   './assets/css/app.css',
@@ -17,6 +17,8 @@ const SHELL = [
   './assets/js/screensaver.js',
   './assets/js/wallpapers.js',
   './assets/js/weather.js',
+  './assets/js/qr.js',
+  './assets/vendor/qrcode.mjs',
   './assets/fonts/atkinson-hyperlegible-next-latin-wght-normal.woff2',
   './assets/fonts/atkinson-hyperlegible-next-latin-ext-wght-normal.woff2',
   './assets/fonts/inter-tight-digits.woff2',

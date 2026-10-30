@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<rss version="2.0"><channel><title>Diario B</title>
+<item><title>Abre sus puertas el nuevo museo de ciencia</title><link>http://localhost:8765/tests/fixtures/article.html</link>
+<description>Más de 3.000 metros cuadrados de exposición.</description><pubDate>Fri, 30 Oct 2026 07:06:24 +0000</pubDate><enclosure url="http://img.example/b1-thumb.jpg" type="image/jpeg" length="1"/></item>
+<item><title>El Real Madrid gana en el último minuto</title><link>https://diario-b.example/deportes/futbol/partido</link><pubDate>Fri, 30 Oct 2026 08:06:24 +0000</pubDate></item>
+<item><title>Crónica de la jornada</title><link>https://diario-b.example/noticia/123</link><category>Deportes</category><pubDate>Fri, 30 Oct 2026 08:06:24 +0000</pubDate></item>
+<item><title>EL GOBIERNO APRUEBA EL NUEVO PLAN DE VIVIENDA</title><link>https://diario-b.example/dup</link><pubDate>Fri, 30 Oct 2026 09:06:24 +0000</pubDate></item>
+</channel></rss>

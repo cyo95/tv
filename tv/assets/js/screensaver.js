@@ -10,10 +10,14 @@
 import { getWallpapers, wallpaperUrl } from './wallpapers.js';
 import { showable, timeAgo } from './news.js';
 import { getWeather, describe, iconSVG } from './weather.js';
+import { qrSVG, shortLink } from './qr.js';
 
 const PHOTO_MS = 25000;   // cada fotografía
-const NEWS_MS = 15000;    // cada grupo de noticias
-const NEWS_PER_GROUP = 3;
+const READ_MS = 15000;    // cada noticia: tiempo para leerla…
+const QR_MS = 5000;       // …y después, el código QR
+const COUNTDOWN = 5;      // «¿Te interesa? Código QR en 5, 4, 3, 2, 1»
+const HINT_EVERY_MS = 45000; // el aviso «pulsa cualquier tecla» aparece de vez en cuando…
+const HINT_SHOW_MS = 6000;   // …y se va solo
 const WAKE_MOVE_PX = 10;  // movimiento mínimo para despertar (evita temblores)
 const SWALLOW_MS = 700;   // tras despertar, se ignora lo que venga justo detrás
 
@@ -37,7 +41,8 @@ function preloadImage(url) {
 }
 
 export function initScreensaver({
-  delayMs, canStart, onOpen, onClose, getPlaceName, photoMs = PHOTO_MS, newsMs = NEWS_MS,
+  delayMs, canStart, onOpen, onClose, getPlaceName, photoMs = PHOTO_MS,
+  readMs = READ_MS, qrMs = QR_MS, hintEveryMs = HINT_EVERY_MS,
 }) {
   const el = document.createElement('div');
   el.className = 'saver';
@@ -53,18 +58,21 @@ export function initScreensaver({
       <p class="saver-date"></p>
       <div class="saver-weather"></div>
     </div>
-    <div class="saver-news"></div>`;
+    <div class="saver-news"></div>
+    <p class="saver-hint"><span class="saver-hint-key">Pulsa cualquier tecla</span> o mueve el cursor para volver</p>`;
   document.body.appendChild(el);
 
   const stage = el.querySelector('.saver-stage');
   const caption = el.querySelector('.saver-caption');
   const newsBox = el.querySelector('.saver-news');
+  const hint = el.querySelector('.saver-hint');
   const weatherBox = el.querySelector('.saver-weather');
 
   let active = false;
   let idleTimer = 0;
   let photoTimer = 0;
-  let newsTimer = 0;
+  let newsTimers = [];
+  let hintTimers = [];
   let clockTimer = 0;
   let photoIndex = -1;
   let newsIndex = 0;
@@ -153,54 +161,111 @@ export function initScreensaver({
     photoTimer = setTimeout(nextPhoto, photoMs);
   }
 
-  /* --- Noticias en recuadros --- */
+  /* --- Noticias, de una en una ---
+     Cada noticia: 15 s para leerla (foto, medio, titular y entradilla).
+     En los últimos 5 s de lectura, un aviso discreto cuenta atrás:
+     «¿Te interesa? Código QR en 5…1». Después, durante 5 s, la entradilla
+     deja sitio al código QR junto al titular, con la instrucción para
+     leerla completa en el móvil. Luego pasa a la siguiente. */
 
-  function newsGroup() {
+  const later = (fn, ms) => newsTimers.push(setTimeout(fn, ms));
+  const clearNews = () => { newsTimers.forEach(clearTimeout); newsTimers = []; };
+
+  function orderedNews() {
     const all = showable();
-    if (!all.length) return [];
-    // Primero las que tienen foto, que lucen más en pequeño.
-    const list = [...all.filter((n) => n.image), ...all.filter((n) => !n.image)];
-    const group = [];
-    for (let i = 0; i < Math.min(NEWS_PER_GROUP, list.length); i += 1) {
-      group.push(list[(newsIndex + i) % list.length]);
-    }
-    newsIndex = (newsIndex + NEWS_PER_GROUP) % list.length;
-    return group;
+    return [...all.filter((n) => n.image), ...all.filter((n) => !n.image)];
   }
 
-  function cardHTML(n) {
+  function panelHTML(n) {
     const when = timeAgo(n.published);
-    const thumb = n.image
-      ? `<img src="${esc(n.image)}" alt="" referrerpolicy="no-referrer" loading="eager" decoding="async">`
-      : '';
+    const photo = n.image
+      ? `<img src="${esc(n.image)}" alt="" referrerpolicy="no-referrer" decoding="async">`
+      : `<span class="np-photo-source">${esc(n.source)}</span>`;
+    let qr = '';
+    try { qr = qrSVG(shortLink(n.link)); } catch { /* dirección demasiado larga: sin QR */ }
     return `
-      <article class="sn-card" data-news-id="${esc(n.id)}">
-        <div class="sn-thumb" style="--src:${esc(n.color)}">${thumb}</div>
-        <div class="sn-body">
-          <p class="sn-meta"><span class="sn-source">${esc(n.source)}</span>${when ? `<span>${esc(when)}</span>` : ''}</p>
-          <p class="sn-title">${esc(n.title)}</p>
+      <article class="np" data-phase="read" data-news-id="${esc(n.id)}" style="--src:${esc(n.color)}">
+        <div class="np-photo">${photo}</div>
+        <div class="np-body">
+          <p class="np-meta">
+            <span class="np-source">${esc(n.source)}</span>${when ? `<span class="np-when">${esc(when)}</span>` : ''}
+            <span class="np-countdown" aria-hidden="true">¿Te interesa? Código QR en <b>${COUNTDOWN}</b></span>
+          </p>
+          <div class="np-layers">
+            <div class="np-layer np-layer--read">
+              <h2 class="np-title">${esc(n.title)}</h2>
+              ${n.summary ? `<p class="np-summary">${esc(n.summary)}</p>` : ''}
+            </div>
+            ${qr ? `
+            <div class="np-layer np-layer--qr">
+              <div class="np-qr-text">
+                <h2 class="np-title">${esc(n.title)}</h2>
+                <p class="np-scan">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>
+                  Escanea el código con el móvil para leer la noticia completa
+                </p>
+              </div>
+              <div class="np-qr">${qr}</div>
+            </div>` : ''}
+          </div>
         </div>
+        <div class="np-progress"><span></span></div>
       </article>`;
   }
 
   function nextNews() {
-    const group = newsGroup();
-    if (!group.length) {
+    clearNews();
+    const list = orderedNews();
+    if (!list.length) {
       newsBox.hidden = true;
-      newsTimer = setTimeout(nextNews, newsMs);
+      later(nextNews, 5000);
       return;
     }
     newsBox.hidden = false;
+    const item = list[newsIndex % list.length];
+    newsIndex = (newsIndex + 1) % list.length;
+    const hasOld = !!newsBox.firstElementChild;
     newsBox.classList.remove('is-in');
-    setTimeout(() => {
+
+    later(() => {
       if (!active) return;
-      newsBox.innerHTML = group.map(cardHTML).join('');
-      newsBox.querySelectorAll('.sn-thumb img').forEach((img) => {
-        img.addEventListener('error', () => img.remove(), { once: true });
-      });
-      newsBox.classList.add('is-in');
-    }, newsBox.innerHTML ? 600 : 0);
-    newsTimer = setTimeout(nextNews, newsMs);
+      newsBox.innerHTML = panelHTML(item);
+      const np = newsBox.firstElementChild;
+      np.querySelector('.np-photo img')?.addEventListener('error', (e) => {
+        e.target.replaceWith(Object.assign(document.createElement('span'), { className: 'np-photo-source', textContent: item.source }));
+      }, { once: true });
+      const hasQr = !!np.querySelector('.np-qr');
+      const total = readMs + (hasQr ? qrMs : 0);
+      np.querySelector('.np-progress span').style.animation = `np-progress ${total}ms linear forwards`;
+      requestAnimationFrame(() => newsBox.classList.add('is-in'));
+
+      if (hasQr) {
+        const count = np.querySelector('.np-countdown');
+        const num = count.querySelector('b');
+        for (let i = 0; i < COUNTDOWN; i += 1) {
+          later(() => {
+            num.textContent = String(COUNTDOWN - i);
+            count.classList.add('is-on');
+          }, readMs - (COUNTDOWN - i) * 1000);
+        }
+        later(() => {
+          count.classList.remove('is-on');
+          np.dataset.phase = 'qr';
+        }, readMs);
+      }
+      later(nextNews, total);
+    }, hasOld ? 700 : 0);
+  }
+
+  /* --- Aviso «pulsa cualquier tecla», de vez en cuando --- */
+
+  function scheduleHint(first) {
+    hintTimers.push(setTimeout(() => {
+      if (!active) return;
+      hint.classList.add('is-on');
+      hintTimers.push(setTimeout(() => hint.classList.remove('is-on'), HINT_SHOW_MS));
+      scheduleHint(false);
+    }, first ? Math.min(12000, hintEveryMs) : hintEveryMs));
   }
 
   /* --- Abrir y cerrar --- */
@@ -215,14 +280,19 @@ export function initScreensaver({
     renderWeather();
     if (onOpen) onOpen();
     nextPhoto();
+    newsBox.innerHTML = '';
     nextNews();
+    scheduleHint(true);
   }
 
   function close(byPress = false) {
     if (!active) return;
     active = false;
     clearTimeout(photoTimer);
-    clearTimeout(newsTimer);
+    clearNews();
+    hintTimers.forEach(clearTimeout);
+    hintTimers = [];
+    hint.classList.remove('is-on');
     clearInterval(clockTimer);
     el.hidden = true;
     stage.querySelectorAll('.saver-photo').forEach((n) => n.remove());

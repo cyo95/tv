@@ -879,61 +879,178 @@ kbd {
 .sw-meta {
   font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', 'Segoe UI', sans-serif; font-size: 1.375rem; color: rgba(255, 255, 255, 0.8); }
 
+/* Noticia: un único panel, con el mismo cristal oscuro que deja ver la
+   foto de fondo detrás. Altura fija para que nada salte al cambiar de fase. */
 .saver-news {
   position: absolute;
   right: 6rem;
   bottom: 5rem;
-  width: 36rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  width: 40rem;
   opacity: 0;
   transform: translateY(0.75rem);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  transition: opacity 0.7s ease, transform 0.7s ease;
 }
 .saver-news.is-in { opacity: 1; transform: none; }
-.sn-card {
-  display: flex;
-  gap: 1.1rem;
-  align-items: center;
-  padding: 0.9rem;
-  border-radius: 1.25rem;
-  background: rgba(8, 10, 16, 0.55);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  backdrop-filter: blur(18px) saturate(1.2);
-  box-shadow: inset 0 0 0 0.08rem rgba(255, 255, 255, 0.14), 0 1rem 2.5rem -1rem rgba(0, 0, 0, 0.6);
-}
-.sn-thumb {
-  flex: none;
-  width: 6.5rem;
-  height: 6.5rem;
-  border-radius: 0.8rem;
+
+.np {
+  position: relative;
   overflow: hidden;
-  background: radial-gradient(80% 80% at 70% 25%, color-mix(in srgb, var(--src) 80%, #fff 10%), var(--src));
+  border-radius: 1.75rem;
+  background: rgba(12, 14, 20, 0.46);
+  -webkit-backdrop-filter: blur(28px) saturate(1.3);
+  backdrop-filter: blur(28px) saturate(1.3);
+  box-shadow: inset 0 0 0 0.08rem rgba(255, 255, 255, 0.13), 0 2rem 4rem -1.5rem rgba(0, 0, 0, 0.65);
 }
-.sn-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sn-body { min-width: 0; }
-.sn-meta {
+.np-photo {
+  position: relative;
+  height: 14rem;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(90% 120% at 75% 10%, color-mix(in srgb, var(--src) 80%, #fff 12%), var(--src) 55%, #07090f);
+}
+.np-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* La foto se funde con el cristal en lugar de cortarse en seco. */
+.np-photo::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 45%;
+  background: linear-gradient(0deg, rgba(12, 14, 20, 0.55), rgba(12, 14, 20, 0));
+}
+.np-photo-source { font-size: 2.25rem; font-weight: 800; color: rgba(255, 255, 255, 0.9); letter-spacing: -0.01em; }
+
+.np-body { padding: 1.4rem 1.75rem 1.7rem; }
+.np-meta {
+  font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', 'Segoe UI', sans-serif;
   display: flex;
-  gap: 0.7rem;
-  margin: 0 0 0.3rem;
-  font-size: 1.0625rem;
-  color: rgba(255, 255, 255, 0.72);
+  align-items: center;
+  gap: 0.8rem;
+  margin: 0 0 0.9rem;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
 }
-.sn-source { font-weight: 700; color: rgba(255, 255, 255, 0.95); }
-.sn-title {
+.np-source { font-weight: 750; color: #fff; }
+.np-countdown {
+  margin-left: auto;
+  font-size: 1.0625rem;
+  color: rgba(255, 255, 255, 0.78);
+  opacity: 0;
+  transform: translateX(0.5rem);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.np-countdown.is-on { opacity: 1; transform: none; }
+.np-countdown b {
+  display: inline-block;
+  min-width: 1.1em;
+  text-align: center;
+  font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', sans-serif;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Las dos fases ocupan la misma celda: el panel mide lo que la más alta
+   de las dos, así no cambia de tamaño al pasar a la fase del QR. */
+.np-layers { display: grid; }
+.np-layer {
+  grid-area: 1 / 1;
+  min-width: 0;
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.np-layer--read { align-self: start; }
+.np-layer--qr { opacity: 0; transform: translateY(0.6rem); }
+.np[data-phase='qr'] .np-layer--read { opacity: 0; transform: translateY(-0.4rem); }
+.np[data-phase='qr'] .np-layer--qr { opacity: 1; transform: none; }
+
+.np-title {
   margin: 0;
-  font-size: 1.375rem;
-  font-weight: 650;
-  line-height: 1.28;
+  font-size: 1.875rem;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.np-summary {
+  margin: 0.8rem 0 0;
+  font-size: 1.375rem;
+  line-height: 1.42;
+  color: rgba(255, 255, 255, 0.84);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.np-layer--qr {
+  display: grid;
+  grid-template-columns: 1fr 12rem;
+  gap: 1.6rem;
+  align-items: center;
+}
+.np-scan {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 1rem 0 0;
+  font-size: 1.25rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.86);
+}
+.np-scan svg { flex: none; width: 1.7rem; height: 1.7rem; margin-top: -0.1rem; }
+.np-qr {
+  width: 12rem;
+  height: 12rem;
+  padding: 0.55rem;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 1rem 2rem -1rem rgba(0, 0, 0, 0.7);
+  transform: scale(0.94);
+  transition: transform 0.7s ease;
+}
+.np[data-phase='qr'] .np-qr { transform: none; }
+.np-qr svg { display: block; width: 100%; height: 100%; }
+
+.np-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0.2rem;
+  background: rgba(255, 255, 255, 0.08);
+}
+.np-progress span {
+  display: block;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.5);
+  transform-origin: left;
+  transform: scaleX(0);
+}
+@keyframes np-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Aviso discreto: aparece de vez en cuando y se va solo. */
+.saver-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 2.25rem;
+  margin: 0;
+  transform: translate(-50%, 0.4rem);
+  font-size: 1.25rem;
+  color: rgba(255, 255, 255, 0.66);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 1.4s ease, transform 1.4s ease;
+  text-shadow: 0 0.1rem 0.8rem rgba(0, 0, 0, 0.6);
+}
+.saver-hint.is-on { opacity: 1; transform: translate(-50%, 0); }
+.saver-hint-key { color: rgba(255, 255, 255, 0.92); font-weight: 650; }
 
 @media (max-aspect-ratio: 4/3) {
-  .saver-news { width: 30rem; right: 3rem; }
+  .saver-news { width: 36rem; right: 3rem; }
   .saver-info, .saver-caption { left: 3rem; }
   .saver-time { font-size: 8rem; }
 }

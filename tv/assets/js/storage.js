@@ -22,14 +22,19 @@ export const CARD_SIZES = [
   { id: 'normal', label: 'Normales' },
 ];
 
-// Minutos sin usar el equipo antes de mostrar el salvapantallas.
+// Tiempo sin usar el equipo antes de mostrar el salvapantallas.
 export const SAVER_DELAYS = [
-  { id: '1', label: '1 min' },
-  { id: '3', label: '3 min' },
-  { id: '5', label: '5 min' },
-  { id: '10', label: '10 min' },
-  { id: 'off', label: 'Nunca' },
+  { id: '10s', label: '10 s', ms: 10000 },
+  { id: '1', label: '1 min', ms: 60000 },
+  { id: '3', label: '3 min', ms: 180000 },
+  { id: '10', label: '10 min', ms: 600000 },
+  { id: 'off', label: 'Nunca', ms: 0 },
 ];
+
+// Revisión de los ajustes. Los cambios de valores por defecto solo se
+// aplican a ajustes guardados con una revisión anterior, para no pisar
+// nunca algo que se haya elegido a mano después.
+const REV = 3;
 
 // Ciudad para el tiempo del salvapantallas (se cambia en Ajustes).
 export const DEFAULT_PLACE = { name: 'Barcelona', region: 'Cataluña, España', lat: 41.3874, lon: 2.1686 };
@@ -45,9 +50,10 @@ function validPlace(p) {
   return { name: p.name.slice(0, 60), region: typeof p.region === 'string' ? p.region.slice(0, 80) : '', lat, lon };
 }
 
-function placeOrDefault(saved, fallback) {
+function placeOrDefault(saved, fallback, rev) {
   const p = validPlace(saved);
   if (!p) return fallback;
+  if (rev >= 2) return p;
   const wasOldDefault = Math.abs(p.lat - OLD_DEFAULT_PLACE.lat) < 0.001 && Math.abs(p.lon - OLD_DEFAULT_PLACE.lon) < 0.001;
   return wasOldDefault ? fallback : p;
 }
@@ -60,7 +66,8 @@ export function defaultSettings() {
     bigCursor: true,
     hideIdleCursor: true,
     showReturnHint: true,
-    saverDelay: '3',
+    rev: REV,
+    saverDelay: '10s',
     weatherPlace: { ...DEFAULT_PLACE },
     order: [...DEFAULT_ORDER],
     favorites: [...DEFAULT_FAVORITES],
@@ -114,6 +121,8 @@ export function loadSettings() {
   }
   if (!raw || typeof raw !== 'object') return d;
 
+  const rev = Number.isInteger(raw.rev) ? raw.rev : 1;
+
   // El orden guardado se respeta; los servicios nuevos se añaden al final.
   const savedOrder = knownIds(raw.order) ?? [];
   const order = [...savedOrder, ...d.order.filter((id) => !savedOrder.includes(id))];
@@ -127,8 +136,10 @@ export function loadSettings() {
     bigCursor: bool(raw.bigCursor, d.bigCursor),
     hideIdleCursor: bool(raw.hideIdleCursor, d.hideIdleCursor),
     showReturnHint: bool(raw.showReturnHint, d.showReturnHint),
-    saverDelay: oneOf(raw.saverDelay, SAVER_DELAYS, d.saverDelay),
-    weatherPlace: placeOrDefault(raw.weatherPlace, d.weatherPlace),
+    rev: REV,
+    // Antes, 3 minutos era el valor por defecto: pasa a los nuevos 10 s.
+    saverDelay: (rev < 3 && raw.saverDelay === '3') ? d.saverDelay : oneOf(raw.saverDelay, SAVER_DELAYS, d.saverDelay),
+    weatherPlace: placeOrDefault(raw.weatherPlace, d.weatherPlace, rev),
     order,
     favorites: knownIds(raw.favorites) ?? d.favorites,
     extras,

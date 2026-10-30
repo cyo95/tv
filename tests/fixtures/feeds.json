@@ -1,0 +1,1 @@
+[{"name": "Diario A", "color": "#123", "url": "http://localhost:8765/tests/fixtures/mrss.xml"}, {"name": "Diario B", "url": "http://localhost:8765/tests/fixtures/enclosure.xml"}, {"name": "Diario C", "url": "http://localhost:8765/tests/fixtures/malformed.xml"}, {"name": "Ca\u00eddo", "url": "http://localhost:8765/tests/fixtures/no-existe.xml"}]

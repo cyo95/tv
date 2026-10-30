@@ -8,6 +8,8 @@ import {
   startNews, getNews, onNews, showable, timeAgo, visualHTML, wireVisuals,
 } from './news.js';
 import { initScreensaver } from './screensaver.js';
+import { startWallpapers } from './wallpapers.js';
+import { startWeather, loadWeather, onWeather, searchPlaces } from './weather.js';
 
 /* ------------------------------------------------------------------ *
  * Estado
@@ -17,7 +19,7 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const view = $('#view');
 const root = document.documentElement;
 
-const ROUTES = ['home', 'apps', 'settings', 'settings/apps', 'help', 'news'];
+const ROUTES = ['home', 'apps', 'settings', 'settings/apps', 'settings/city', 'help', 'news'];
 let settings = loadSettings();
 let route = parseRoute(location.hash);
 let launching = false;
@@ -115,7 +117,7 @@ function goBack() {
   } else {
     // Se llegó directamente a una pantalla interna (p. ej. recargando):
     // «atrás» lleva a su pantalla superior.
-    const parent = route === 'settings/apps' ? 'settings' : 'home';
+    const parent = route.startsWith('settings/') ? 'settings' : 'home';
     history.replaceState({ depth: 0 }, '', hashFor(parent));
     route = parent;
     render({ focus: 'restore' });
@@ -294,9 +296,15 @@ function renderSettings() {
         </div>
       </section>
       <section class="group">
-        <h2>Noticias</h2>
+        <h2>Salvapantallas</h2>
         <div class="rows">
-          ${choiceRow('saverDelay', 'Mostrar noticias si no se usa durante', SAVER_DELAYS)}
+          ${choiceRow('saverDelay', 'Aparece si no se usa durante', SAVER_DELAYS)}
+          <button class="row" type="button" data-nav data-action="settings-city" data-focus-key="go-city">
+            <span class="row-label">Ciudad del tiempo
+              <span class="row-hint">${esc(settings.weatherPlace.name)}${settings.weatherPlace.region ? `, ${esc(settings.weatherPlace.region)}` : ''}</span>
+            </span>
+            <span aria-hidden="true" style="transform:rotate(180deg);display:inline-flex;width:1.75rem">${ICON.back}</span>
+          </button>
         </div>
       </section>
       <section class="group">
@@ -358,6 +366,87 @@ function renderSettingsApps() {
    «Leer la noticia» abre la web del medio, como cualquier app. */
 
 let newsIndex = 0;
+
+/* Ciudad del tiempo */
+
+let cityResults = [];
+let cityStatus = '';
+let cityQuery = '';
+
+function renderCity() {
+  view.className = 'view';
+  const p = settings.weatherPlace;
+  let results = '';
+  if (cityStatus === 'loading') results = '<p class="help-lead">Buscando…</p>';
+  else if (cityStatus === 'error') results = '<p class="note">No se ha podido buscar. Comprueba la conexión.</p>';
+  else if (cityStatus === 'none') results = '<p class="help-lead">No se ha encontrado ninguna ciudad con ese nombre.</p>';
+  else if (cityResults.length) {
+    results = `<div class="rows">${cityResults.map((c, i) => `
+      <button class="row" type="button" data-nav data-city-idx="${i}" data-focus-key="city:${i}">
+        <span class="row-label">${esc(c.name)}<span class="row-hint">${esc(c.region)}</span></span>
+      </button>`).join('')}</div>`;
+  }
+  return `
+    <div class="screen-head">${backHTML()}<h1 class="screen-title">Ciudad del tiempo</h1></div>
+    <div class="settings">
+      <p class="help-lead">Ahora: <strong>${esc(p.name)}</strong>${p.region ? `, ${esc(p.region)}` : ''}</p>
+      <div class="city-search">
+        <input class="city-input" id="city-input" type="text" data-nav data-focus-key="city-input" value="${esc(cityQuery)}"
+          placeholder="Escribe tu ciudad" aria-label="Buscar ciudad" autocomplete="off" spellcheck="false" maxlength="60">
+        <button class="btn" type="button" data-nav data-action="city-search" data-focus-key="city-search">Buscar</button>
+      </div>
+      ${results}
+    </div>`;
+}
+
+async function runCitySearch() {
+  const input = $('#city-input');
+  cityQuery = input ? input.value : cityQuery;
+  if (cityQuery.trim().length < 2) {
+    toast('Escribe al menos dos letras.');
+    return;
+  }
+  cityStatus = 'loading';
+  cityResults = [];
+  render({ focus: 'city-input' });
+  try {
+    cityResults = await searchPlaces(cityQuery);
+    cityStatus = cityResults.length ? '' : 'none';
+  } catch {
+    cityStatus = 'error';
+  }
+  if (route === 'settings/city') render({ focus: cityResults.length ? 'city:0' : 'city-input' });
+}
+
+function chooseCity(i) {
+  const c = cityResults[i];
+  if (!c) return;
+  settings.weatherPlace = { name: c.name, region: c.region, lat: c.lat, lon: c.lon };
+  persist();
+  loadWeather(settings.weatherPlace);
+  toast(`El tiempo será el de ${c.name}.`);
+  cityResults = [];
+  cityQuery = '';
+  goBack();
+}
+
+// Teclas dentro del cuadro de la ciudad: se escribe con normalidad.
+document.addEventListener('keydown', (e) => {
+  if (e.target?.id !== 'city-input' || e.ctrlKey || e.altKey || e.metaKey || e.isComposing) return;
+  e.stopPropagation();
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    runCitySearch();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    if (e.target.value) e.target.value = '';
+    else goBack();
+  } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const next = findNext(e.target, e.key);
+    if (next) focusEl(next);
+  }
+}, true);
 
 let brokenTimer = 0;
 
@@ -484,6 +573,7 @@ function render({ focus = 'restore', keepScroll = false } = {}) {
     'settings/apps': renderSettingsApps,
     help: renderHelp,
     news: renderNews,
+    'settings/city': renderCity,
   }[route]();
   const scroll = view.scrollTop;
   view.innerHTML = html;
@@ -774,6 +864,9 @@ document.addEventListener('click', (e) => {
   if (action === 'settings-apps') return go('settings/apps');
   if (action === 'help') return go('help');
   if (action === 'news') return go('news');
+  if (action === 'settings-city') { cityStatus = ''; cityResults = []; return go('settings/city'); }
+  if (action === 'city-search') return runCitySearch();
+  if (t.dataset.cityIdx) return chooseCity(Number(t.dataset.cityIdx));
   if (action === 'news-prev') return showNews(newsIndex - 1, 'news-prev');
   if (action === 'news-next') return showNews(newsIndex + 1, 'news-next');
   if (action === 'news-read') return readNews();
@@ -845,7 +938,8 @@ document.addEventListener('pointermove', (e) => {
   showCursor();
   // Mientras se escribe una búsqueda, rozar el touchpad no quita el foco
   // de la barra (si no, Enter abriría la tarjeta sobre la que pasó el cursor).
-  if (document.activeElement === searchInput && searchInput.value.trim()) return;
+  const ae = document.activeElement;
+  if (ae && ae.tagName === 'INPUT' && ae.value.trim()) return;
 
   const grid = e.target.closest?.('[data-grid]');
   if (grid) {
@@ -1059,22 +1153,29 @@ function init() {
   startNews();
   onNews(() => { if (route === 'news') render({ focus: 'restore', keepScroll: true }); });
 
-  // Para pruebas: ?idle=10&slide=4 abre el carrusel tras 10 s y cambia
-  // de noticia cada 4 s.
+  startWallpapers();
+  startWeather(() => settings.weatherPlace);
+
+  // Para pruebas: ?idle=10&slide=4 abre el salvapantallas tras 10 s y
+  // cambia de foto cada 4 s.
   const params = new URLSearchParams(location.search);
   const testIdle = Number(params.get('idle'));
   const testSlide = Number(params.get('slide'));
-  initScreensaver({
-    slideMs: testSlide >= 2 && testSlide <= 60 ? testSlide * 1000 : undefined,
+  const quick = testSlide >= 2 && testSlide <= 60 ? testSlide * 1000 : undefined;
+  const saver = initScreensaver({
+    photoMs: quick,
+    newsMs: quick,
+    getPlaceName: () => settings.weatherPlace.name,
     delayMs: () => {
       if (settings.saverDelay === 'off') return 0;
       if (testIdle > 0 && testIdle <= 600) return testIdle * 1000;
       return Number(settings.saverDelay) * 60000;
     },
-    canStart: () => !launching && route !== 'news' && document.visibilityState === 'visible',
+    canStart: () => !launching && document.visibilityState === 'visible',
     onOpen: () => root.classList.add('cursor-off'),
     onClose: () => showCursor(),
   });
+  onWeather(() => saver.refreshWeather());
   // Persistencia: guarda la versión normalizada (repara datos dañados).
   persist();
 

@@ -22,13 +22,25 @@ export const CARD_SIZES = [
   { id: 'normal', label: 'Normales' },
 ];
 
-// Minutos sin usar el equipo antes de mostrar el carrusel de noticias.
+// Minutos sin usar el equipo antes de mostrar el salvapantallas.
 export const SAVER_DELAYS = [
   { id: '1', label: '1 min' },
-  { id: '2', label: '2 min' },
+  { id: '3', label: '3 min' },
   { id: '5', label: '5 min' },
+  { id: '10', label: '10 min' },
   { id: 'off', label: 'Nunca' },
 ];
+
+// Ciudad para el tiempo del salvapantallas (se cambia en Ajustes).
+export const DEFAULT_PLACE = { name: 'Madrid', region: 'Comunidad de Madrid, España', lat: 40.4165, lon: -3.7026 };
+
+function validPlace(p) {
+  if (!p || typeof p.name !== 'string' || !p.name.trim()) return null;
+  const lat = Number(p.lat);
+  const lon = Number(p.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { name: p.name.slice(0, 60), region: typeof p.region === 'string' ? p.region.slice(0, 80) : '', lat, lon };
+}
 
 export function defaultSettings() {
   return {
@@ -38,7 +50,8 @@ export function defaultSettings() {
     bigCursor: true,
     hideIdleCursor: true,
     showReturnHint: true,
-    saverDelay: '2',
+    saverDelay: '3',
+    weatherPlace: { ...DEFAULT_PLACE },
     order: [...DEFAULT_ORDER],
     favorites: [...DEFAULT_FAVORITES],
     extras: [...DEFAULT_EXTRAS],
@@ -105,6 +118,7 @@ export function loadSettings() {
     hideIdleCursor: bool(raw.hideIdleCursor, d.hideIdleCursor),
     showReturnHint: bool(raw.showReturnHint, d.showReturnHint),
     saverDelay: oneOf(raw.saverDelay, SAVER_DELAYS, d.saverDelay),
+    weatherPlace: validPlace(raw.weatherPlace) ?? d.weatherPlace,
     order,
     favorites: knownIds(raw.favorites) ?? d.favorites,
     extras,

@@ -1,15 +1,21 @@
-// Carrusel de noticias cuando no se usa el equipo.
+// Salvapantallas de CyoTools TV.
 //
-// Tras unos minutos sin tocar el touchpad ni el teclado, CyoTools TV pasa
-// noticias a pantalla completa, con su foto. En cuanto se mueve el cursor o
-// se pulsa una tecla, vuelve exactamente a donde estaba. Esa primera
-// pulsación no hace nada más: solo despierta la pantalla.
+// Tras unos minutos sin tocar el touchpad ni el teclado, aparece un
+// carrusel de fotografías (paisajes, naturaleza, lugares del mundo) con la
+// hora, la fecha, el tiempo y unos pocos recuadros de noticias. Está
+// pensado para mirarse, no para usarse: no tiene botones. En cuanto se
+// mueve el cursor o se pulsa una tecla, vuelve exactamente a donde estaba,
+// y esa primera pulsación no hace nada más.
 
-import { showable, getNews, timeAgo, visualHTML, wireVisuals, preload } from './news.js';
+import { getWallpapers, wallpaperUrl } from './wallpapers.js';
+import { showable, timeAgo } from './news.js';
+import { getWeather, describe, iconSVG } from './weather.js';
 
-const SLIDE_MS = 12000;
-const WAKE_MOVE_PX = 10;      // movimiento mínimo para despertar (evita temblores)
-const SWALLOW_MS = 700;       // tras despertar, se ignoran clics y teclas sueltas
+const PHOTO_MS = 25000;   // cada fotografía
+const NEWS_MS = 15000;    // cada grupo de noticias
+const NEWS_PER_GROUP = 3;
+const WAKE_MOVE_PX = 10;  // movimiento mínimo para despertar (evita temblores)
+const SWALLOW_MS = 700;   // tras despertar, se ignora lo que venga justo detrás
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -17,8 +23,22 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
 
 const timeFmt = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
 const dateFmt = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function initScreensaver({ delayMs, canStart, onOpen, onClose, slideMs = SLIDE_MS }) {
+function preloadImage(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.decoding = 'async';
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
+}
+
+export function initScreensaver({
+  delayMs, canStart, onOpen, onClose, getPlaceName, photoMs = PHOTO_MS, newsMs = NEWS_MS,
+}) {
   const el = document.createElement('div');
   el.className = 'saver';
   el.id = 'saver';
@@ -26,28 +46,33 @@ export function initScreensaver({ delayMs, canStart, onOpen, onClose, slideMs = 
   el.setAttribute('aria-hidden', 'true');
   el.innerHTML = `
     <div class="saver-stage"></div>
-    <div class="saver-shade"></div>
-    <div class="saver-top">
-      <span class="saver-label">Noticias</span>
-      <span class="saver-clock"><time class="saver-time"></time><span class="saver-date"></span></span>
+    <div class="saver-vignette"></div>
+    <p class="saver-caption"></p>
+    <div class="saver-info">
+      <time class="saver-time"></time>
+      <p class="saver-date"></p>
+      <div class="saver-weather"></div>
     </div>
-    <div class="saver-text"></div>
-    <div class="saver-progress" aria-hidden="true"><span></span></div>
-    <p class="saver-hint">Mueve el cursor o pulsa una tecla para volver</p>`;
+    <div class="saver-news"></div>`;
   document.body.appendChild(el);
 
   const stage = el.querySelector('.saver-stage');
-  const text = el.querySelector('.saver-text');
-  const bar = el.querySelector('.saver-progress span');
+  const caption = el.querySelector('.saver-caption');
+  const newsBox = el.querySelector('.saver-news');
+  const weatherBox = el.querySelector('.saver-weather');
 
   let active = false;
   let idleTimer = 0;
-  let slideTimer = 0;
+  let photoTimer = 0;
+  let newsTimer = 0;
   let clockTimer = 0;
-  let index = -1;
+  let photoIndex = -1;
+  let newsIndex = 0;
   let moved = 0;
   let swallowUntil = 0;
   let flip = false;
+
+  /* --- Cuenta atrás --- */
 
   function arm() {
     clearTimeout(idleTimer);
@@ -57,97 +82,161 @@ export function initScreensaver({ delayMs, canStart, onOpen, onClose, slideMs = 
     }
   }
 
+  /* --- Hora, fecha y tiempo --- */
+
   function tickClock() {
     const now = new Date();
     el.querySelector('.saver-time').textContent = timeFmt.format(now);
-    el.querySelector('.saver-date').textContent = dateFmt.format(now);
+    el.querySelector('.saver-date').textContent = capital(dateFmt.format(now));
   }
 
-  function clockOnly() {
-    stage.innerHTML = '';
-    el.classList.add('saver--clock');
-    text.innerHTML = `
-      <p class="saver-big-time">${timeFmt.format(new Date())}</p>
-      <p class="saver-big-date">${dateFmt.format(new Date())}</p>
-      <p class="saver-meta">${getNews().status === 'loading' ? 'Cargando noticias…' : 'No hay noticias disponibles ahora mismo'}</p>`;
-    bar.style.animation = 'none';
-  }
-
-  async function next() {
-    const items = showable();
-    if (!items.length) {
-      clockOnly();
-      slideTimer = setTimeout(next, slideMs);
+  function renderWeather() {
+    const w = getWeather();
+    if (!w) {
+      weatherBox.hidden = true;
       return;
     }
-    el.classList.remove('saver--clock');
-    index = (index + 1) % items.length;
-    const item = items[index];
-    const ok = await preload(item);
-    if (!active) return;
-    if (!ok) return next(); // foto rota: siguiente
+    const d = describe(w.code);
+    const range = Number.isFinite(w.max) && Number.isFinite(w.min) ? `Máx. ${w.max}° · Mín. ${w.min}°` : '';
+    weatherBox.hidden = false;
+    weatherBox.innerHTML = `
+      <span class="sw-icon">${iconSVG(d.kind, w.isDay)}</span>
+      <span class="sw-temp">${w.temp}°</span>
+      <span class="sw-text">
+        <span class="sw-desc">${esc(d.text)}</span>
+        <span class="sw-meta">${esc([getPlaceName(), range].filter(Boolean).join(' · '))}</span>
+      </span>`;
+  }
 
-    // Dos capas que se cruzan suavemente.
+  /* --- Fotografías --- */
+
+  async function nextPhoto() {
+    const list = getWallpapers();
+    if (!list.length) {
+      // Sin fotos: fondo en calma con degradados que se mueven despacio.
+      stage.classList.add('saver-stage--ambient');
+      caption.textContent = '';
+      photoTimer = setTimeout(nextPhoto, photoMs);
+      return;
+    }
+    stage.classList.remove('saver-stage--ambient');
+    photoIndex = (photoIndex + 1) % list.length;
+    const item = list[photoIndex];
+    const url = wallpaperUrl(item);
+    const ok = await preloadImage(url);
+    if (!active) return;
+    if (!ok) {
+      item.broken = true;
+      return nextPhoto();
+    }
     flip = !flip;
     const layer = document.createElement('div');
-    layer.className = `saver-slide${flip ? ' saver-slide--alt' : ''}`;
-    layer.dataset.newsId = item.id;
-    layer.innerHTML = visualHTML(item, { eager: true });
+    layer.className = `saver-photo${flip ? ' saver-photo--alt' : ''}`;
+    layer.dataset.id = item.id;
+    layer.style.setProperty('--photo-ms', `${photoMs + 3000}ms`);
+    layer.innerHTML = `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" decoding="async">`;
     stage.appendChild(layer);
-    wireVisuals(layer);
     requestAnimationFrame(() => requestAnimationFrame(() => layer.classList.add('is-in')));
-    const old = [...stage.children].slice(0, -1);
-    setTimeout(() => old.forEach((n) => n.remove()), 1400);
+    const old = [...stage.querySelectorAll('.saver-photo')].slice(0, -1);
+    setTimeout(() => old.forEach((n) => n.remove()), 2600);
 
-    const when = timeAgo(item.published);
-    text.classList.remove('is-in');
+    caption.classList.remove('is-in');
     setTimeout(() => {
-      text.dataset.newsId = item.id;
-      text.innerHTML = `
-        <p class="saver-meta"><span class="saver-source" style="--src:${esc(item.color)}">${esc(item.source)}</span>${when ? `<span>${esc(when)}</span>` : ''}</p>
-        <h2 class="saver-title">${esc(item.title)}</h2>
-        ${item.summary ? `<p class="saver-summary">${esc(item.summary)}</p>` : ''}`;
-      text.classList.add('is-in');
-    }, 350);
+      caption.innerHTML = item.place
+        ? `<span class="saver-place">${esc(item.place)}</span>${item.credit ? `<span class="saver-credit">${esc(item.credit)}</span>` : ''}`
+        : '';
+      caption.classList.add('is-in');
+    }, 900);
 
-    bar.style.animation = 'none';
-    void bar.offsetWidth;
-    bar.style.animation = `saver-progress ${slideMs}ms linear forwards`;
-
-    preload(items[(index + 1) % items.length]);
-    slideTimer = setTimeout(next, slideMs);
+    const nextItem = list[(photoIndex + 1) % list.length];
+    if (nextItem) preloadImage(wallpaperUrl(nextItem));
+    photoTimer = setTimeout(nextPhoto, photoMs);
   }
+
+  /* --- Noticias en recuadros --- */
+
+  function newsGroup() {
+    const all = showable();
+    if (!all.length) return [];
+    // Primero las que tienen foto, que lucen más en pequeño.
+    const list = [...all.filter((n) => n.image), ...all.filter((n) => !n.image)];
+    const group = [];
+    for (let i = 0; i < Math.min(NEWS_PER_GROUP, list.length); i += 1) {
+      group.push(list[(newsIndex + i) % list.length]);
+    }
+    newsIndex = (newsIndex + NEWS_PER_GROUP) % list.length;
+    return group;
+  }
+
+  function cardHTML(n) {
+    const when = timeAgo(n.published);
+    const thumb = n.image
+      ? `<img src="${esc(n.image)}" alt="" referrerpolicy="no-referrer" loading="eager" decoding="async">`
+      : '';
+    return `
+      <article class="sn-card" data-news-id="${esc(n.id)}">
+        <div class="sn-thumb" style="--src:${esc(n.color)}">${thumb}</div>
+        <div class="sn-body">
+          <p class="sn-meta"><span class="sn-source">${esc(n.source)}</span>${when ? `<span>${esc(when)}</span>` : ''}</p>
+          <p class="sn-title">${esc(n.title)}</p>
+        </div>
+      </article>`;
+  }
+
+  function nextNews() {
+    const group = newsGroup();
+    if (!group.length) {
+      newsBox.hidden = true;
+      newsTimer = setTimeout(nextNews, newsMs);
+      return;
+    }
+    newsBox.hidden = false;
+    newsBox.classList.remove('is-in');
+    setTimeout(() => {
+      if (!active) return;
+      newsBox.innerHTML = group.map(cardHTML).join('');
+      newsBox.querySelectorAll('.sn-thumb img').forEach((img) => {
+        img.addEventListener('error', () => img.remove(), { once: true });
+      });
+      newsBox.classList.add('is-in');
+    }, newsBox.innerHTML ? 600 : 0);
+    newsTimer = setTimeout(nextNews, newsMs);
+  }
+
+  /* --- Abrir y cerrar --- */
 
   function open() {
     if (active) return;
     active = true;
     moved = 0;
     el.hidden = false;
-    el.classList.remove('saver--hint-off');
-    setTimeout(() => el.classList.add('saver--hint-off'), 6000);
     tickClock();
-    clockTimer = setInterval(tickClock, 15000);
+    clockTimer = setInterval(tickClock, 10000);
+    renderWeather();
     if (onOpen) onOpen();
-    next();
+    nextPhoto();
+    nextNews();
   }
 
-  // byPress: se cerró con un clic o una tecla. Entonces se ignora durante
-  // un instante lo que venga detrás (el clic o la tecla al soltarse).
   function close(byPress = false) {
     if (!active) return;
     active = false;
-    clearTimeout(slideTimer);
+    clearTimeout(photoTimer);
+    clearTimeout(newsTimer);
     clearInterval(clockTimer);
     el.hidden = true;
-    stage.innerHTML = '';
-    text.innerHTML = '';
-    swallowUntil = byPress ? Date.now() + SWALLOW_MS : 0;
+    stage.querySelectorAll('.saver-photo').forEach((n) => n.remove());
+    newsBox.innerHTML = '';
+    caption.innerHTML = '';
+    // Tras despertar se ignoran un instante los clics y teclas: el toque que
+    // despierta la pantalla no debe abrir lo que haya debajo del cursor.
+    swallowUntil = Date.now() + (byPress ? SWALLOW_MS : SWALLOW_MS / 2 + 200);
     if (onClose) onClose();
     arm();
   }
 
-  // Cualquier actividad reinicia la cuenta atrás; si el carrusel está
-  // visible, lo cierra y la pulsación no llega a la interfaz.
+  /* --- Despertar --- */
+
   const swallow = (e) => {
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -187,5 +276,5 @@ export function initScreensaver({ delayMs, canStart, onOpen, onClose, slideMs = 
   });
 
   arm();
-  return { open, close, arm, isActive: () => active };
+  return { open, close, arm, isActive: () => active, refreshWeather: () => active && renderWeather() };
 }

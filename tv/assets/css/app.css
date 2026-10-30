@@ -20,6 +20,17 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* Solo números, dos puntos y «°»: cifras limpias para los relojes y la
+   temperatura (la tipografía principal usa un cero con barra). */
+@font-face {
+  font-family: 'CyoTools Digits';
+  src: url('../fonts/inter-tight-digits.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0030-003A, U+00B0;
+}
+
 /* ---------- Temas ---------- */
 
 :root,
@@ -229,12 +240,14 @@ html[data-theme='negro'] .ambient { opacity: 0.22; }
   line-height: 1.1;
 }
 .clock-time {
+  font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', 'Segoe UI', sans-serif;
   font-size: 2.5rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 .clock-date {
+  font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', 'Segoe UI', sans-serif;
   font-size: 1.25rem;
   color: var(--text-2);
 }
@@ -755,79 +768,177 @@ kbd {
     radial-gradient(70% 90% at 75% 25%, color-mix(in srgb, var(--src) 85%, #ffffff 8%) 0%, var(--src) 35%, #05070c 100%);
 }
 
-/* ---------- Carrusel de noticias (cuando no se usa) ---------- */
+/* ---------- Salvapantallas ----------
+   Fotografía a pantalla completa con un movimiento de cámara muy lento,
+   la hora y el tiempo abajo a la izquierda y tres noticias pequeñas abajo
+   a la derecha. Sin botones: solo para mirar. */
 
 .saver {
   position: fixed;
   inset: 0;
   z-index: 25;
+  overflow: hidden;
   background: #000;
   color: #fff;
-  overflow: hidden;
-  animation: fade-in 0.6s ease-out both;
+  animation: fade-in 1.2s ease-out both;
+  cursor: none;
 }
 .saver-stage { position: absolute; inset: 0; }
-.saver-slide {
+.saver-photo {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 1.2s ease;
+  transition: opacity 2.4s ease;
 }
-.saver-slide.is-in { opacity: 1; }
-/* Movimiento lento de cámara: da vida sin distraer. */
-.saver-slide.is-in .nv[data-fit='cover'] .nv-img {
-  animation: kenburns 14s ease-out forwards;
-  transform-origin: 30% 40%;
+.saver-photo.is-in { opacity: 1; }
+.saver-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform-origin: 35% 45%;
 }
-.saver-slide--alt.is-in .nv[data-fit='cover'] .nv-img { transform-origin: 70% 60%; }
-@keyframes kenburns { from { transform: scale(1); } to { transform: scale(1.08); } }
+.saver-photo.is-in img { animation: drift var(--photo-ms, 28s) linear forwards; }
+.saver-photo--alt img { transform-origin: 65% 55%; }
+@keyframes drift { from { transform: scale(1.0); } to { transform: scale(1.07); } }
 
-.saver-shade {
+/* Sin fotografías: degradados oscuros que se mueven despacio. */
+.saver-stage--ambient {
+  background:
+    radial-gradient(60% 70% at 20% 30%, #1d3b5c 0%, transparent 70%),
+    radial-gradient(55% 60% at 80% 70%, #3b2457 0%, transparent 70%),
+    radial-gradient(50% 50% at 60% 20%, #0f4a4a 0%, transparent 70%),
+    #05070c;
+  background-size: 160% 160%;
+  animation: ambient 40s ease-in-out infinite alternate;
+}
+@keyframes ambient { from { background-position: 0% 0%; } to { background-position: 100% 100%; } }
+
+/* Oscurece solo donde hay texto, para que la foto respire. */
+.saver-vignette {
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background:
-    linear-gradient(0deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.55) 32%, rgba(0, 0, 0, 0) 62%),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 55%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 22%);
+    linear-gradient(0deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.38) 26%, rgba(0, 0, 0, 0) 52%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0) 18%);
 }
-.saver-top {
+
+.saver-caption {
   position: absolute;
   top: 3rem;
   left: 6rem;
-  right: 6rem;
+  max-width: 60rem;
+  margin: 0;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 0.2rem;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  text-shadow: 0 0.1rem 0.8rem rgba(0, 0, 0, 0.6);
 }
-.saver-label {
-  font-size: 1.5rem;
-  font-weight: 760;
-  padding: 0.5rem 1.1rem;
-  border-radius: 0.6rem;
-  background: rgba(255, 255, 255, 0.14);
-}
-.saver-clock { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.05; }
-.saver-time { font-size: 3.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.saver-date { font-size: 1.375rem; color: rgba(255, 255, 255, 0.82); }
+.saver-caption.is-in { opacity: 1; }
+.saver-place { font-size: 1.375rem; font-weight: 600; color: rgba(255, 255, 255, 0.92); }
+.saver-credit { font-size: 1rem; color: rgba(255, 255, 255, 0.65); }
 
-.saver-text {
+.saver-info {
   position: absolute;
   left: 6rem;
-  bottom: 6rem;
-  max-width: 56rem;
-  opacity: 0;
-  transform: translateY(1rem);
-  transition: opacity 0.6s ease, transform 0.6s ease;
+  bottom: 5rem;
+  text-shadow: 0 0.2rem 1.6rem rgba(0, 0, 0, 0.45);
 }
-.saver-text.is-in { opacity: 1; transform: none; }
-.saver-meta {
+.saver-time {
+  font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', 'Segoe UI', sans-serif;
+  display: block;
+  font-size: 10rem;
+  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.saver-date {
+  font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', 'Segoe UI', sans-serif;
+  margin: 0.75rem 0 0 0.3rem;
+  font-size: 2.25rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+}
+.saver-weather {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin: 0 0 1.25rem;
-  font-size: 1.5rem;
-  color: rgba(255, 255, 255, 0.85);
+  gap: 1.1rem;
+  margin: 1.75rem 0 0 0.2rem;
+  padding-top: 1.5rem;
+  border-top: 0.1rem solid rgba(255, 255, 255, 0.28);
 }
+.sw-icon { display: grid; place-items: center; width: 4rem; height: 4rem; }
+.sw-icon svg { width: 100%; height: 100%; }
+.sw-temp {
+  font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', 'Segoe UI', sans-serif; font-size: 3.5rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.sw-text { display: flex; flex-direction: column; gap: 0.15rem; margin-left: 0.4rem; }
+.sw-desc { font-size: 1.75rem; font-weight: 600; }
+.sw-meta {
+  font-family: 'CyoTools Digits', 'Atkinson Hyperlegible Next', 'Segoe UI', sans-serif; font-size: 1.375rem; color: rgba(255, 255, 255, 0.8); }
+
+.saver-news {
+  position: absolute;
+  right: 6rem;
+  bottom: 5rem;
+  width: 36rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  opacity: 0;
+  transform: translateY(0.75rem);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.saver-news.is-in { opacity: 1; transform: none; }
+.sn-card {
+  display: flex;
+  gap: 1.1rem;
+  align-items: center;
+  padding: 0.9rem;
+  border-radius: 1.25rem;
+  background: rgba(8, 10, 16, 0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: inset 0 0 0 0.08rem rgba(255, 255, 255, 0.14), 0 1rem 2.5rem -1rem rgba(0, 0, 0, 0.6);
+}
+.sn-thumb {
+  flex: none;
+  width: 6.5rem;
+  height: 6.5rem;
+  border-radius: 0.8rem;
+  overflow: hidden;
+  background: radial-gradient(80% 80% at 70% 25%, color-mix(in srgb, var(--src) 80%, #fff 10%), var(--src));
+}
+.sn-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sn-body { min-width: 0; }
+.sn-meta {
+  display: flex;
+  gap: 0.7rem;
+  margin: 0 0 0.3rem;
+  font-size: 1.0625rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+.sn-source { font-weight: 700; color: rgba(255, 255, 255, 0.95); }
+.sn-title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 650;
+  line-height: 1.28;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-aspect-ratio: 4/3) {
+  .saver-news { width: 30rem; right: 3rem; }
+  .saver-info, .saver-caption { left: 3rem; }
+  .saver-time { font-size: 8rem; }
+}
+
+/* Etiqueta del medio (pantalla Noticias). */
 .saver-source {
   padding: 0.35rem 0.85rem;
   border-radius: 0.5rem;
@@ -836,71 +947,6 @@ kbd {
   background: var(--src);
   box-shadow: inset 0 0 0 0.1rem rgba(255, 255, 255, 0.25);
 }
-.saver-title {
-  margin: 0 0 1rem;
-  font-size: 4.25rem;
-  font-weight: 800;
-  line-height: 1.08;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-shadow: 0 0.2rem 1.5rem rgba(0, 0, 0, 0.5);
-}
-.saver-summary {
-  margin: 0;
-  font-size: 1.75rem;
-  line-height: 1.35;
-  color: rgba(255, 255, 255, 0.88);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.saver-progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 0.35rem;
-  background: rgba(255, 255, 255, 0.12);
-}
-.saver-progress span {
-  display: block;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.75);
-  transform-origin: left;
-  transform: scaleX(0);
-}
-@keyframes saver-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.saver-hint {
-  position: absolute;
-  right: 6rem;
-  bottom: 2.25rem;
-  margin: 0;
-  font-size: 1.25rem;
-  color: rgba(255, 255, 255, 0.75);
-  transition: opacity 1s ease;
-}
-.saver--hint-off .saver-hint { opacity: 0; }
-
-/* Sin noticias: reloj grande. */
-.saver--clock .saver-top .saver-clock { visibility: hidden; }
-.saver--clock .saver-text {
-  left: 0;
-  right: 0;
-  bottom: auto;
-  top: 50%;
-  max-width: none;
-  transform: translateY(-50%);
-  text-align: center;
-  opacity: 1;
-}
-.saver-big-time { margin: 0; font-size: 12rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-.saver-big-date { margin: 1rem 0 2rem; font-size: 2.5rem; color: rgba(255, 255, 255, 0.85); }
-.saver--clock .saver-meta { justify-content: center; }
 
 /* ---------- Pantalla de Noticias ---------- */
 
@@ -1041,6 +1087,27 @@ kbd {
 .news-thumb[aria-current='true'] .news-thumb-img { box-shadow: 0 0 0 0.25rem #3f8cff; }
 .news-thumb:focus { opacity: 1; }
 .news-thumb:focus .news-thumb-img { box-shadow: 0 0 0 0.3rem var(--focus); }
+
+/* Ciudad del tiempo */
+.city-search { display: flex; gap: 1rem; align-items: center; }
+.city-input {
+  flex: 1;
+  max-width: 40rem;
+  height: 4.25rem;
+  padding: 0 1.5rem;
+  border: 0;
+  border-radius: 1.1rem;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 0.125rem var(--line);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 600;
+  outline: none;
+  user-select: text;
+}
+.city-input:focus { background: var(--surface-hi); box-shadow: 0 0 0 0.25rem var(--focus); }
+.city-input::placeholder { color: var(--text-2); font-weight: 400; }
 
 .pill--news { display: inline-flex; align-items: center; gap: 0.6rem; }
 .pill--news svg { width: 1.6rem; height: 1.6rem; }

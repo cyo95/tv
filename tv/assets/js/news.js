@@ -20,10 +20,22 @@ function safeUrl(url) {
   return null;
 }
 
+// Sin deportes. El recolector ya los quita; esto cubre las noticias que
+// ya estuvieran publicadas antes de activar el filtro.
+const SPORTS_PATH = /\/(deportes?|sports?|futbol|baloncesto|motor|motogp|formula-?1|f1|tenis|ciclismo|golf|atletismo|balonmano|nba|laliga|liga|champions|mundial|eurocopa|real-madrid|fc-barcelona|atletico-de-madrid)(\/|-|\.|$)/i;
+const SPORTS_TITLE = /\b(LaLiga|Liga F|Champions|Europa League|Copa del Rey|Supercopa|Eurocopa|Real Madrid|Barça|FC Barcelona|Atlético de Madrid|Fórmula 1|F1|MotoGP|Fernando Alonso|Alcaraz|Nadal|NBA|ACB|Euroliga|futbolista|fútbol|futbol|fichaje|seleccionador)\b/i;
+
+function isSports(title, link) {
+  try {
+    if (SPORTS_PATH.test(new URL(link).pathname)) return true;
+  } catch { /* enlace ya validado */ }
+  return SPORTS_TITLE.test(title);
+}
+
 function normalize(raw) {
   if (!raw || typeof raw.title !== 'string') return null;
   const link = safeUrl(raw.link);
-  if (!link) return null;
+  if (!link || isSports(raw.title, link)) return null;
   return {
     id: String(raw.id || link),
     title: raw.title.trim(),

@@ -13,7 +13,7 @@ Uso:
   python3 scripts/fetch_news.py --out tv/news.json [--previous URL] [--feeds archivo.json]
 """
 import argparse, concurrent.futures as cf, email.utils, hashlib, html, json, re, sys, time
-import urllib.request, urllib.error
+import urllib.request, urllib.error, urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -34,6 +34,28 @@ MAX_AGE_HOURS = 36      # se descartan las antiguas
 GOOD_WIDTH = 900        # por debajo, se busca una foto más grande en la noticia
 TIMEOUT = 12
 UA = 'Mozilla/5.0 (compatible; CyoToolsTV/1.0; +https://cyotools.com/tv/)'
+
+# Sin deportes: se descartan por la sección de la web, por la categoría del
+# RSS o por palabras que solo aparecen en noticias deportivas.
+SPORTS_PATH = re.compile(
+    r'/(deportes?|sports?|futbol|f%C3%BAtbol|baloncesto|basket|motor|motociclismo|motogp|formula-?1|f1|'
+    r'tenis|ciclismo|golf|atletismo|balonmano|nba|laliga|liga|champions|mundial|eurocopa|'
+    r'primera-division|segunda-division|real-madrid|fc-barcelona|atletico-de-madrid|'
+    r'juegos-olimpicos|olimpiadas)(/|-|\.|$)', re.I)
+SPORTS_CATEGORY = re.compile(r'deporte|fútbol|futbol|baloncesto|tenis|motor|ciclismo|sport|liga|champions', re.I)
+SPORTS_TITLE = re.compile(
+    r'\b(LaLiga|Liga F|Champions|Europa League|Conference League|Copa del Rey|Supercopa|Eurocopa|'
+    r'Mundial de (fútbol|clubes)|Real Madrid|Barça|FC Barcelona|Atlético de Madrid|Athletic Club|'
+    r'Real Sociedad|Sevilla FC|Real Betis|Valencia CF|Villarreal CF|Ancelotti|Mbappé|Vinicius|Lamine Yamal|'
+    r'Fórmula 1|F1|MotoGP|Fernando Alonso|Carlos Sainz|Marc Márquez|Alcaraz|Nadal|Roland Garros|'
+    r'Wimbledon|Tour de Francia|La Vuelta|NBA|ACB|Euroliga|gol(es)?|futbolista|seleccionador|'
+    r'entrenador del|fichaje|fútbol|futbol|jornada \d+)\b', re.I)
+
+
+def is_sports(item, categories=''):
+    path = urllib.parse.urlsplit(item['link']).path
+    return bool(SPORTS_PATH.search(path) or SPORTS_CATEGORY.search(categories) or SPORTS_TITLE.search(item['title']))
+
 
 NS = {
     'media': 'http://search.yahoo.com/mrss/',
@@ -168,12 +190,17 @@ def parse_feed(data, source):
         if summary.lower().startswith(title.lower()[:40].lower()):
             summary = ''
         img, width = best_image(it, content_raw)
+        cats = ' '.join((c.text or '') for c in it.findall('category')) + ' ' + ' '.join(
+            (c.get('term') or '') for c in it.findall('atom:category', NS))
         date = parse_date(text_of(it, 'pubDate', 'dc:date', 'atom:updated', 'atom:published'))
-        out.append({
+        item = {
             'title': title, 'summary': summary, 'link': link, 'image': img, 'imageWidth': width,
             'source': source['name'], 'color': source.get('color', '#203048'),
             'published': date.isoformat().replace('+00:00', 'Z') if date else None,
-        })
+        }
+        if is_sports(item, cats):
+            continue
+        out.append(item)
     return out
 
 

@@ -32,7 +32,10 @@ export const SAVER_DELAYS = [
 ];
 
 // Ciudad para el tiempo del salvapantallas (se cambia en Ajustes).
-export const DEFAULT_PLACE = { name: 'Madrid', region: 'Comunidad de Madrid, España', lat: 40.4165, lon: -3.7026 };
+export const DEFAULT_PLACE = { name: 'Barcelona', region: 'Cataluña, España', lat: 41.3874, lon: 2.1686 };
+// Ciudad por defecto de la versión anterior: si sigue guardada, es que no se
+// eligió a mano, y se cambia a la nueva.
+const OLD_DEFAULT_PLACE = { lat: 40.4165, lon: -3.7026 };
 
 function validPlace(p) {
   if (!p || typeof p.name !== 'string' || !p.name.trim()) return null;
@@ -40,6 +43,13 @@ function validPlace(p) {
   const lon = Number(p.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
   return { name: p.name.slice(0, 60), region: typeof p.region === 'string' ? p.region.slice(0, 80) : '', lat, lon };
+}
+
+function placeOrDefault(saved, fallback) {
+  const p = validPlace(saved);
+  if (!p) return fallback;
+  const wasOldDefault = Math.abs(p.lat - OLD_DEFAULT_PLACE.lat) < 0.001 && Math.abs(p.lon - OLD_DEFAULT_PLACE.lon) < 0.001;
+  return wasOldDefault ? fallback : p;
 }
 
 export function defaultSettings() {
@@ -118,7 +128,7 @@ export function loadSettings() {
     hideIdleCursor: bool(raw.hideIdleCursor, d.hideIdleCursor),
     showReturnHint: bool(raw.showReturnHint, d.showReturnHint),
     saverDelay: oneOf(raw.saverDelay, SAVER_DELAYS, d.saverDelay),
-    weatherPlace: validPlace(raw.weatherPlace) ?? d.weatherPlace,
+    weatherPlace: placeOrDefault(raw.weatherPlace, d.weatherPlace),
     order,
     favorites: knownIds(raw.favorites) ?? d.favorites,
     extras,
